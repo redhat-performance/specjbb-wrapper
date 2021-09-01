@@ -168,9 +168,12 @@ set_prop_file()
 		increment_warehouse=$increment_by
 
 	fi
-	sed "s/RAMPUP_TIME/$ramp_up/g" $run_dir/specjbb_extra/template.prop | sed "s/MEASURE_TIME/$measurement/g" > /tmp/temp
-	sed "s/ENDWH/$end_warehouse/g" /tmp/temp | sed "s/STARTWH/$start_warehouse/g" > /tmp/temp1
-	sed "s/INCWH/$increment_warehouse/g" /tmp/temp1 > $run_dir/prop.file
+	sed "s/input.ramp_up_seconds=30/input.ramp_up_seconds=${ramp_up}/g" $run_dir/SPECjbb.props > /tmp/temp
+	sed "s/input.measurement_seconds=240/input.measurement_seconds=${measurement}/g" /tmp/temp > /tmp/temp1
+	sed "s/#input.ending_number_warehouses=2/input.ending_number_warehouses=${end_warehouse}/g" /tmp/temp1 > /tmp/temp
+	sed "s/input.starting_number_warehouses=1/input.starting_number_warehouses=${start_warehouse}/g" /tmp/temp > /tmp/temp1
+	sed "s/input.output_directory=results/input.output_directory=results_specjbb/g" /tmp/temp1 > /tmp/temp
+	sed "s/input.increment_number_warehouses=1/input.increment_number_warehouses=${increment_warehouse}/g" /tmp/temp > $run_dir/prop.file
 }
 
 #
@@ -278,7 +281,7 @@ run_specjbb()
 	RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
         mkdir ${RESULTSDIR}
 	rm results_${test_name}_${to_tuned_setting} 
-        ln -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
+        cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
 
 	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 	process_specjbb_data
@@ -306,7 +309,7 @@ run_pbench_pbench_specjbb()
 		RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
         	mkdir ${RESULTSDIR}
 		rm results_${test_name}_${to_tuned_setting} 
-        	ln -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
+        	cp -R ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
 		timestamp=`date | sed "s/ /_/g"`
 		
 		cp -R $specdir/results results_${test_name}_${to_tuned_setting}
@@ -506,14 +509,19 @@ else
 	nodes=`echo ${node_list} | sed "s/,/ /g"`
 fi
 
-if [[ ${specjbb_kit} == "" ]]; then
-	specjbb_kit="/${to_home_root}/${to_user}/specjbb_kit.tar"
-fi
 pushd $run_dir
+if [[ ${specjbb_kit} == "" ]]; then
+	specjbb_kit=`ls -rt /tmp/SPECjbb2005_kit* | tail -1`
+	if [[ $specjbb_kit == *"tar.gz" ]]; then
+		gunzip $specjbb_kit
+		specjbb_kit=`ls -rt *tar | tail -1`
+	fi
+fi
+echo $specjbb_kit
 cd ..
 tar xf $specjbb_kit
+cp -R SPECjbb2005/* specjbb
 popd
-
 
 if [ $regression -eq 1 ]; then
 	nodes="1 ${numb_nodes}"
