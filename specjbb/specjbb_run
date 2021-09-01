@@ -17,6 +17,7 @@ specjbb_opts="none"
 execname=$0
 regression=0
 use_pbench_version=0
+specjbb_kit=""
 
 tools_git=https://github.com/dvalinrh/test_tools
 #
@@ -411,6 +412,7 @@ ARGUMENT_LIST=(
 	"iterations"
 	"nr-jvms"
 	"runtime"
+	"specjbb_kit"
 	"start-warehouses"
 	"stop-warehouses"
 )
@@ -463,6 +465,10 @@ while [[ $# -gt 0 ]]; do
 			untime=$2
 			shift 2
 		;;
+		--specjbb_kit)
+			specjbb_kit=$2
+			shift 2
+		;;
 		--start-warehouses)
 			start_warehouse=$2
 			shift 2
@@ -500,8 +506,12 @@ else
 	nodes=`echo ${node_list} | sed "s/,/ /g"`
 fi
 
-pushd /$to_home_root/$to_user/workloads/specjbb-wrapper-1.0
-tar xf /$to_home_root/$to_user/specjbb_kit.tar
+if [[ ${specjbb_kit} == "" ]]; then
+	specjbb_kit="/${to_home_root}/${to_user}/specjbb_kit.tar"
+fi
+pushd $run_dir
+cd ..
+tar xf $specjbb_kit
 popd
 
 
