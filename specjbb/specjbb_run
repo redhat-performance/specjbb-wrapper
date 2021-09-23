@@ -539,10 +539,11 @@ if [[ ${specjbb_kit} == "" ]]; then
 		specjbb_kit=`ls -rt *tar | tail -1`
 	fi
 fi
-echo $specjbb_kit
 cd ..
 tar xf $specjbb_kit
-cp -R SPECjbb2005/* specjbb
+cd specjbb
+tar xf specjbb2005.tar.gz
+cp specjbb2005/* .
 popd
 
 if [ $regression -eq 1 ]; then
