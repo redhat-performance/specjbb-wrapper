@@ -531,19 +531,21 @@ else
 	nodes=`echo ${node_list} | sed "s/,/ /g"`
 fi
 
-pushd $run_dir
+pushd /$to_home_root/$to_user
 if [[ ${specjbb_kit} == "" ]]; then
-	specjbb_kit=`ls -rt /tmp/SPECjbb2005_kit* | tail -1`
+	specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
 	if [[ $specjbb_kit == *"tar.gz" ]]; then
 		gunzip $specjbb_kit
-		specjbb_kit=`ls -rt *tar | tail -1`
 	fi
 fi
+popd
+pushd $run_dir
 cd ..
-tar xf $specjbb_kit
+tar xf /$to_home_root/$to_user/$specjbb_kit
+mkdir specjbb
 cd specjbb
-tar xf specjbb2005.tar.gz
-cp specjbb2005/* .
+tar xf /$to_home_root/$to_user/$specjbb_kit
+cp -R SPECjbb2005/* .
 popd
 
 if [ $regression -eq 1 ]; then
