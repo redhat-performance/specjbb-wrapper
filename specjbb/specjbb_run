@@ -323,7 +323,8 @@ run_specjbb()
 run_pbench_pbench_specjbb()
 {
 	cd /usr/local/share/
-	tar zxvf  $run_dir/specjbb2005.tar.gz
+	tar xvf  $to_home_root/$to_user/$specjbb_kit
+	ln -s SPECjbb2005 specjbb2005
 	pbench-specjbb2005 --heap-size=8192m --nr-jvms=$nr_jvms --start-warehouses=$start_warehouse --inc-warehouse=$increment_warehouse --runtime=$runtime --stop-warehouses=$end_warehouse
 	results_prefix=$to_puser"_instance_"$to_configuration
 	for specdir in `ls -d /var/lib/pbench-agent/specjbb2005*`; do
