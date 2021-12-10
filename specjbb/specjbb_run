@@ -83,7 +83,7 @@ process_specjbb_data()
 	#
 	# Locate the last created specjbb results
 	#
-	lvl1=`ls -td results_specjbb* | grep -v tar | tail -1`
+	lvl1=`ls -td results_*specjbb*tuned* | grep -v tar | tail -1`
 	for lvl2 in `ls -d $lvl1/results_specjbb*`; do
 		pushd $lvl2 > /tmp/null
 		csv_file=`pwd`/results_${test_name}.csv
