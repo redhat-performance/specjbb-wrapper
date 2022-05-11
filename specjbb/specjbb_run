@@ -41,12 +41,24 @@ regression=0
 use_pbench_version=0
 specjbb_kit=""
 
-tools_git=https://github.com/dvalinrh/test_tools
+tools_git=https://github.com/redhat-performance/test_tools-wrappers
 #
 # Get the directory were the command lives.
 #
-chars=`echo $0 | awk -v RS='/' 'END{print NR-1}'`
-run_dir=`echo $0 | cut -d'/' -f 1-${chars}`
+
+if [[ $0 == "./"* ]]; then
+	chars=`echo $0 | awk -v RS='/' 'END{print NR-1}'`
+	if [[ $chars == 1 ]]; then
+		run_dir=`pwd`
+	else
+		run_dir=`echo $0 | cut -d'/' -f 1-${chars} | cut -d'.' -f2-`
+		curdir=`pwd`
+		run_dir="${curdir}${run_dir}"
+	fi
+else
+	chars=`echo $0 | awk -v RS='/' 'END{print NR-1}'`
+	run_dir=`echo $0 | cut -d'/' -f 1-${chars}`
+fi
 
 #
 # How many cpus in the system
@@ -409,7 +421,7 @@ done
 # clone the repo.
 #
 if [ ! -d "test_tools" ]; then
-        git clone $tools_git
+        git clone $tools_git test_tools
         if [ $? -ne 0 ]; then
                 echo pulling git $tools_git failed.
                 exit
