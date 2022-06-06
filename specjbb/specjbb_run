@@ -40,12 +40,12 @@ execname=$0
 regression=0
 use_pbench_version=0
 specjbb_kit=""
+java_exec="/bin/java"
 
 tools_git=https://github.com/redhat-performance/test_tools-wrappers
 #
 # Get the directory were the command lives.
 #
-
 if [[ $0 == "./"* ]]; then
 	chars=`echo $0 | awk -v RS='/' 'END{print NR-1}'`
 	if [[ $chars == 1 ]]; then
@@ -257,10 +257,10 @@ execute_specjbb()
 	#	
 	for jvms in 0 `seq 1 1  $nr_jvms`; do
 		if [[ $node_pinning == "y" ]]; then
-			echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh
-			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
+			echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh $java_exec
+			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
 		else
-			./run.sh >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
+			./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
 		fi
 		#
 		# Save the pid for later waiting.
@@ -453,6 +453,7 @@ ARGUMENT_LIST=(
 	"inc-warehouse"
 	"iterations"
 	"nr-jvms"
+	"java_exec"
 	"runtime"
 	"specjbb_kit"
 	"start-warehouses"
@@ -497,6 +498,10 @@ while [[ $# -gt 0 ]]; do
 		;;
 		--nr-jvms)
 			node_list=$2
+			shift 2
+		;;
+		--java_exec)
+			java_exec=$2
 			shift 2
 		;;
 		--regression)

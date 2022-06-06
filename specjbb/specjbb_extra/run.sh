@@ -28,10 +28,11 @@ echo $CLASSPATH
 CLASSPATH=./jbb.jar:./check.jar:$CLASSPATH
 echo $CLASSPATH
 export CLASSPATH
+java=$1
 
-java -fullversion
+$java -fullversion
 
-java -version 2> java_version
+$java -version 2> java_version
 java_version=`grep "openjdk version" java_version | cut -d'"' -f 2`
 if [[ $version == "11"* ]]; then
 	aggressive=""
@@ -49,6 +50,6 @@ else
 	 xss_value="-Xss330k"
 fi
 
-java \
+$java \
 -Xms8192m -Xmx8192m $xss_value -XX:+UseParallelOldGC $aggressive -XX:+UseBiasedLocking -XX:+UseCompressedOops -XX:SurvivorRatio=24 spec.jbb.JBBmain -propfile $PROPS_FILE
 date
