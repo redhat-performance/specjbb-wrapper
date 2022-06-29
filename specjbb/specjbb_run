@@ -46,13 +46,13 @@ tools_git=https://github.com/redhat-performance/test_tools-wrappers
 #
 # Get the directory were the command lives.
 #
+curdir=`pwd`
 if [[ $0 == "./"* ]]; then
 	chars=`echo $0 | awk -v RS='/' 'END{print NR-1}'`
 	if [[ $chars == 1 ]]; then
 		run_dir=`pwd`
 	else
 		run_dir=`echo $0 | cut -d'/' -f 1-${chars} | cut -d'.' -f2-`
-		curdir=`pwd`
 		run_dir="${curdir}${run_dir}"
 	fi
 else
@@ -316,6 +316,7 @@ run_specjbb()
         mkdir ${RESULTSDIR}
 	rm results_${test_name}_${to_tuned_setting} 
         cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
+	cp ${curdir}/meta_data.yml results_${test_name}_${to_tuned_setting}
 
 	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 	process_specjbb_data
@@ -376,6 +377,7 @@ run_pbench_pbench_specjbb()
 #
 run_specjbb_via_pbench()
 {
+	cd ${curdir}
 	$TOOLS_BIN/execute_via_pbench --cmd_executing "$0" $arguments --test $test_name --spacing 11 --pbench_stats $to_pstats
 }
 
