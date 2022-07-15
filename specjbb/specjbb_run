@@ -41,8 +41,19 @@ regression=0
 use_pbench_version=0
 specjbb_kit=""
 java_exec="/bin/java"
+test_status="Ran"
 
 tools_git=https://github.com/redhat-performance/test_tools-wrappers
+
+if [ ! -f "/tmp/${test_name}.out" ]; then
+        command="${0} $@"
+        echo $command
+        $command &> /tmp/${test_name}.out
+        cat /tmp/${test_name}.out
+        rm /tmp/${test_name}.out
+        exit
+fi
+
 #
 # Get the directory were the command lives.
 #
@@ -153,6 +164,10 @@ process_specjbb_data()
 			popd > /dev/null
 			rm ${total_data}*
 		done
+		lines=`wc -l $csv_file | cut -d' ' -f 1`
+		if [ $lines -lt 2 ]; then
+			test_status="Failed"
+		fi
 		popd > /dev/null
 	done
 }
@@ -317,6 +332,8 @@ run_specjbb()
 	rm results_${test_name}_${to_tuned_setting} 
         cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
 	cp ${curdir}/meta_data.yml results_${test_name}_${to_tuned_setting}
+	mv ${test_name}.out  results_${test_name}_${to_tuned_setting}
+	echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
 
 	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 	process_specjbb_data
