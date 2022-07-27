@@ -576,7 +576,7 @@ pushd /$to_home_root/$to_user
 if [[ ${specjbb_kit} == "" ]]; then
 	specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
 	if [[ $specjbb_kit == *"tar.gz" ]]; then
-		gunzip $specjbb_kit
+		tar xf $specjbb_kit
 		specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
 	fi
 fi
