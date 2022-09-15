@@ -337,6 +337,7 @@ run_specjbb()
 
 	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 	process_specjbb_data
+	find $results_${test_name}_${to_tuned_setting}  -type f | tar --transform 's/.*\///g' -cf results_${test_name}_${to_tuned_setting}_pbench.tar --files-from=/dev/stdin
 	tar hcf results_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting}
 	popd > /dev/null
 
