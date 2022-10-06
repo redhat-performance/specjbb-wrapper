@@ -405,7 +405,8 @@ usage()
 	echo "Usage $1:"
 	echo "  --inc-warehouses: how many warehouses to increment each time, default"
 	echo "    else increment_warehouse=echo ${end_warehouse}/8"
-	echo "  --nr-jbvms: number of jvms to use, default 1 and the # numa nodes"
+	echo "  --max_nodes: Runs one jvm per node"
+	echo "  --nr-jvms: number of jvms to use, default 1 and the # numa nodes"
 	echo "  --regression: regression runs, settings, measurement=120, total 8 warehouse data points"
 	echo "  --start-warehouses: Number of warehouses to start at, default 2, if cpus < 16 else value is calculated."
 	echo "  --stop-warehouse: Warehouses top stop at.  Default is ncpus"
@@ -473,6 +474,7 @@ source test_tools/general_setup "$@"
 ARGUMENT_LIST=(
 	"inc-warehouse"
 	"iterations"
+	"max_jvms"
 	"nr-jvms"
 	"java_exec"
 	"runtime"
@@ -503,6 +505,12 @@ if [ $? -ne 0 ]; then
 fi
 
 eval set --$opts
+#
+# Determine how many numa nodes we have.
+# We will run on each node.  If regression is designated we will
+# run on 1 node and the maximum number of nodes.
+#
+numb_nodes=$(ls -1d /sys/devices/system/node/node* | wc -l)
 
 while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -510,10 +518,11 @@ while [[ $# -gt 0 ]]; do
 			increment_warehouse=$2
 			shift 2
 		;;
+		--max_jvms)
+			nr_jvms=$numb_nodes
+			shift 1
+		;;
 		--node-pinning)
-			#
-			# Not supported at this time, pbench option
-			#
 			node_pinning=$2
 			shift 2
 		;;
@@ -562,12 +571,6 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
-#
-# Determine how many numa nodes we have.
-# We will run on each node.  If regression is designated we will
-# run on 1 node and the maximum number of nodes.
-#
-numb_nodes=$(ls -1d /sys/devices/system/node/node* | wc -l)
 if [ $numb_nodes -eq 1 ]; then
 	nodes="1"
 else
