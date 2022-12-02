@@ -473,7 +473,7 @@ fi
 source test_tools/general_setup "$@"
 
 ARGUMENT_LIST=(
-	"inc-warehouse"
+	"inc-warehouses"
 	"iterations"
 	"max_jvms"
 	"nr-jvms"
@@ -515,7 +515,7 @@ numb_nodes=$(ls -1d /sys/devices/system/node/node* | wc -l)
 
 while [[ $# -gt 0 ]]; do
         case "$1" in
-		--inc-warehouse)
+		--inc-warehouses)
 			increment_warehouse=$2
 			shift 2
 		;;
