@@ -407,6 +407,7 @@ usage()
 	echo "  --inc-warehouses: how many warehouses to increment each time, default"
 	echo "    else increment_warehouse=echo ${end_warehouse}/8"
 	echo "  --max_nodes: Runs one jvm per node"
+	echo "  --node_pinning: If set to y, then will bind to the numa node, default is n"
 	echo "  --nr-jvms: number of jvms to use, default 1 and the # numa nodes"
 	echo "  --regression: regression runs, settings, measurement=120, total 8 warehouse data points"
 	echo "  --start-warehouses: Number of warehouses to start at, default 2, if cpus < 16 else value is calculated."
@@ -477,6 +478,7 @@ ARGUMENT_LIST=(
 	"iterations"
 	"max_jvms"
 	"nr-jvms"
+	"node_pinning"
 	"java_exec"
 	"runtime"
 	"specjbb_kit"
@@ -523,7 +525,7 @@ while [[ $# -gt 0 ]]; do
 			nr_jvms=$numb_nodes
 			shift 1
 		;;
-		--node-pinning)
+		--node_pinning)
 			node_pinning=$2
 			shift 2
 		;;
