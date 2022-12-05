@@ -25,6 +25,7 @@
 # Defined options
 #
 arguments="$@"
+numb_jvms=0
 test_name="specjbb"
 declare -a nodes
 nodes_count=0
@@ -108,7 +109,7 @@ process_specjbb_data()
 	#
 	lvl1=`ls -td results_*specjbb*tuned* | grep -v tar | tail -1`
 	for lvl2 in `ls -d $lvl1/results_specjbb*`; do
-		pushd $lvl2 > /tmp/null
+		pushd $lvl2 > /dev/null
 		csv_file=`pwd`/results_${test_name}.csv
 		for dir_work in `ls -d SPEC*`; do
 			pushd $dir_work > /dev/null
@@ -181,16 +182,21 @@ set_prop_file()
 	# syntax of $1
 	# ENDWH=<val>:STARTWH=<val> and so forth.
 	#
+	jvms_doing=$1
 	if [[ $1 != "none" ]]; then
 		config=`echo $1 | cut -d: -f 1`
-		config_list=`echo $1 | cut -d: -f 2-1000`
+		config_list=`echo $2 | cut -d: -f 2-1000`
 		work_with=`echo $config_list | sed "s/:/ /g"`
 		for i in $work_with; do
 			field=`echo $i | cut -d'=' -f 1`
 			value=`echo $i | cut -d'=' -f 2`
 
 			if [[ $field == "ENDWH" ]]; then
-				end_warehouse=$value
+				if [ $1 -eq 0 ]; then
+					end_warehouse=$value
+				else
+					end_warehouse=`echo "($value)/$1`
+				fi
 				continue
 			fi
 			if [[ $field == "INCWH" ]]; then
@@ -219,7 +225,27 @@ set_prop_file()
 	fi
 	sed "s/input.ramp_up_seconds=30/input.ramp_up_seconds=${ramp_up}/g" $run_dir/SPECjbb.props > /tmp/temp
 	sed "s/input.measurement_seconds=240/input.measurement_seconds=${measurement}/g" /tmp/temp > /tmp/temp1
-	sed "s/#input.ending_number_warehouses=2/input.ending_number_warehouses=${end_warehouse}/g" /tmp/temp1 > /tmp/temp
+	if [ $jvms_doing -eq 0 ]; then
+		sed "s/#input.ending_number_warehouses=2/input.ending_number_warehouses=${end_warehouse}/g" /tmp/temp1 > /tmp/temp
+	else
+		value=`echo "$end_warehouse/$jvms_doing" | bc`
+		if [ $value -lt $start_warehouse ]; then
+			value=$start_warehouse
+		fi
+		sed "s/#input.ending_number_warehouses=2/input.ending_number_warehouses=${value}/g" /tmp/temp1 > /tmp/temp
+		tval=`echo "${increment_warehouse}/${jvms_doing}" | bc`
+		if [ $tval -lt 2 ]; then
+			increment_warehouse=2
+		else
+			increment_warehouse=$tval
+		fi
+		tval=`echo "${start_warehouse}/${jvms_doing}" | bc`
+		if [ $tval -lt 2 ]; then
+			start_warehouse=2
+		else
+			start_warehouse=$tval
+		fi
+	fi
 	sed "s/input.starting_number_warehouses=1/input.starting_number_warehouses=${start_warehouse}/g" /tmp/temp > /tmp/temp1
 	sed "s/input.output_directory=results/input.output_directory=results_specjbb/g" /tmp/temp1 > /tmp/temp
 	sed "s/input.increment_number_warehouses=1/input.increment_number_warehouses=${increment_warehouse}/g" /tmp/temp > $run_dir/prop.file
@@ -258,6 +284,58 @@ concat_files()
 	done
 }
 
+reduce_data()
+{
+	temp_dir=$(mktemp -d /tmp/spec_reduce.XXXXXX)
+	files=`ls *_jvm_*_of_${1}`
+	index=1
+	prior=0
+	save_file=$temp_dir/worker
+	merge_file=$temp_dir/merge
+	results_file=specjbb_merged_jvms_${1}.csv
+	total_file=specjbb_total_jvms_${1}.csv
+	for results in $files; do
+		found=0
+		while IFS= read -r line
+		do
+			if [[ $line == *"TOTALS"* ]]; then
+					wh=`echo $line | awk '{print $5}'`
+					found=1	
+					continue
+				fi
+			if [ $found -eq 0 ]; then
+				continue;
+			fi
+			if [[ $line == *"throughput"* ]]; then
+				value=`echo $line | awk '{print $3}'`
+				echo ${wh} ${value} >> $save_file
+				found=0
+			fi
+		done < "$results"
+		if [ $index -gt 1 ]; then
+			join $results_file $save_file >> $merge_file
+			mv $merge_file $results_file
+			rm $save_file
+		else
+			mv $save_file $results_file
+		fi
+		let "index=$index+1"
+	done
+
+	while IFS= read -r data
+	do
+		wh_jvm=`echo $data | cut -d' ' -f 1`
+		values=`echo $data | cut -d' ' -f 2-`
+		total=0
+		for val in $values; do
+			total=`echo "$total + $val" | bc`
+		done
+		wh_jvm=`echo "$wh_jvm*$1" | bc`
+		echo $wh_jvm:$total >> $total_file
+	done < "$results_file"
+	rm -rf $temp_dir  $files
+}
+
 #
 # Execute specjbb.  Passed in is 
 #  syntax of $1
@@ -265,17 +343,17 @@ concat_files()
 #
 execute_specjbb()
 {
-	set_prop_file $1
+	set_prop_file $numb_jvms $1
 
 	#
 	# Start up all the jvms.
 	#	
 	for jvms in 0 `seq 1 1  $nr_jvms`; do
+		let "node_index=${jvms}+1"
 		if [[ $node_pinning == "y" ]]; then
-			echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh $java_exec
-			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
+			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh $java_exec ${node_index} ${numb_jvms} >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
 		else
-			./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
+			./run.sh $java_exec ${node_index} ${numb_jvms}>> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
 		fi
 		#
 		# Save the pid for later waiting.
@@ -290,6 +368,7 @@ execute_specjbb()
 		wait $pid
 	done
 	concat_files $nr_jvms
+	reduce_data  $numb_jvms
 }
 
 #
@@ -312,6 +391,7 @@ run_specjbb()
 	file=`/$to_home_root/$to_user/tools_bin/get_params_file -d /$to_home_root/$to_user -c ${to_sysname} -t ${test_name}`
 
 	# Arrays are 0 based
+	numb_jvms=$nr_jvms
 	let nr_jvms="$nr_jvms-1"
 	for iterations  in 1 `seq 2 1 $to_times_to_run`; do
 		pindex=0
@@ -330,17 +410,23 @@ run_specjbb()
 	RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
         mkdir ${RESULTSDIR}
 	rm results_${test_name}_${to_tuned_setting} 
-        cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
+        cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting}
 	cp ${curdir}/meta_data.yml results_${test_name}_${to_tuned_setting}
 	mv ${test_name}.out  results_${test_name}_${to_tuned_setting}
 	echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
+        mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 
-	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
-	process_specjbb_data
+#	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
+	mv $run_dir/*csv results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
+	rm $run_dir/*_jvm_of_*
+	pushd results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp} > /dev/null
+	cp specjbb_total_jvms* results_specjbb.csv
+	popd > /dev/null
+#	process_specjbb_data
 	rm -f results_pbench.tar 
 	working_dir=`ls -rtd /tmp/results*${test_name}* | grep -v tar | tail -1`
 	find $working_dir  -type f | tar --transform 's/.*\///g' -cf results_pbench.tar --files-from=/dev/stdin
-	tar hcf results_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting}
+	tar hcf results_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting} 
 	popd > /dev/null
 
 	if [ -d "/var/lib/pbench-agent"  ]; then
@@ -361,7 +447,7 @@ run_pbench_pbench_specjbb()
 	pbench-specjbb2005 --heap-size=8192m --nr-jvms=$nr_jvms --start-warehouses=$start_warehouse --inc-warehouse=$increment_warehouse --runtime=$runtime --stop-warehouses=$end_warehouse
 	results_prefix=$to_puser"_instance_"$to_configuration
 	for specdir in `ls -d /var/lib/pbench-agent/specjbb2005*`; do
-		pushd /tmp
+		pushd /tmp > /dev/null
 		RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
         	mkdir ${RESULTSDIR}
 		rm results_${test_name}_${to_tuned_setting} 
@@ -378,9 +464,9 @@ run_pbench_pbench_specjbb()
 		tar hcf results_pbench_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting}
 		popd > /dev/null
 		mkdir $specdir/results/wrapper_results
-		pushd $specdir/results/wrapper_results
+		pushd $specdir/results/wrapper_results > /dev/null
 		tar xf /tmp/results_pbench_${test_name}_${to_tuned_setting}.tar
-		popd
+		popd > /dev/null
 	done
 	value=`$TOOLS_BIN/set_pbench_variables --host_config $to_configuration --sys_type $to_sys_type --test ${test_name} --pbench_user $to_puser --run_label $to_run_label`
         hostname=`echo $value | cut -d: -f 1| sed "s/${to_puser}_//g"`
@@ -580,7 +666,7 @@ else
 	nodes=`echo ${node_list} | sed "s/,/ /g"`
 fi
 
-pushd /$to_home_root/$to_user
+pushd /$to_home_root/$to_user > /dev/null
 if [[ ${specjbb_kit} == "" ]]; then
 	specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
 	if [[ $specjbb_kit == *"tar.gz" ]]; then
@@ -588,15 +674,15 @@ if [[ ${specjbb_kit} == "" ]]; then
 		specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
 	fi
 fi
-popd
-pushd $run_dir
+popd > /dev/null
+pushd $run_dir > /dev/null
 cd ..
 tar xf /$to_home_root/$to_user/$specjbb_kit
 mkdir specjbb
 cd specjbb
 tar xf /$to_home_root/$to_user/$specjbb_kit
 cp -R SPECjbb2005/* .
-popd
+popd > /dev/null
 
 if [ $regression -eq 1 ]; then
 	nodes="1 ${numb_nodes}"
