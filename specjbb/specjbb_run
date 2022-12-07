@@ -182,7 +182,7 @@ set_prop_file()
 	# syntax of $1
 	# ENDWH=<val>:STARTWH=<val> and so forth.
 	#
-	jvms_doing=$1
+	jvms_running=$1
 	if [[ $1 != "none" ]]; then
 		config=`echo $1 | cut -d: -f 1`
 		config_list=`echo $2 | cut -d: -f 2-1000`
@@ -225,21 +225,21 @@ set_prop_file()
 	fi
 	sed "s/input.ramp_up_seconds=30/input.ramp_up_seconds=${ramp_up}/g" $run_dir/SPECjbb.props > /tmp/temp
 	sed "s/input.measurement_seconds=240/input.measurement_seconds=${measurement}/g" /tmp/temp > /tmp/temp1
-	if [ $jvms_doing -eq 0 ]; then
+	if [ $jvms_running -eq 0 ]; then
 		sed "s/#input.ending_number_warehouses=2/input.ending_number_warehouses=${end_warehouse}/g" /tmp/temp1 > /tmp/temp
 	else
-		value=`echo "$end_warehouse/$jvms_doing" | bc`
+		value=`echo "$end_warehouse/$jvms_running" | bc`
 		if [ $value -lt $start_warehouse ]; then
 			value=$start_warehouse
 		fi
 		sed "s/#input.ending_number_warehouses=2/input.ending_number_warehouses=${value}/g" /tmp/temp1 > /tmp/temp
-		tval=`echo "${increment_warehouse}/${jvms_doing}" | bc`
+		tval=`echo "${increment_warehouse}/${jvms_running}" | bc`
 		if [ $tval -lt 2 ]; then
 			increment_warehouse=2
 		else
 			increment_warehouse=$tval
 		fi
-		tval=`echo "${start_warehouse}/${jvms_doing}" | bc`
+		tval=`echo "${start_warehouse}/${jvms_running}" | bc`
 		if [ $tval -lt 2 ]; then
 			start_warehouse=2
 		else
@@ -286,7 +286,7 @@ concat_files()
 
 reduce_data()
 {
-	temp_dir=$(mktemp -d /tmp/spec_reduce.XXXXXX)
+	temp_dir=$(mktemp -d /tmp/specjbb_reduce.XXXXXX)
 	files=`ls *_jvm_*_of_${1}`
 	index=1
 	prior=0
@@ -415,14 +415,12 @@ run_specjbb()
 	mv ${test_name}.out  results_${test_name}_${to_tuned_setting}
 	echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
         mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
-
 #	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 	mv $run_dir/*csv results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 	rm $run_dir/*_jvm_of_*
 	pushd results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp} > /dev/null
 	cp specjbb_total_jvms* results_specjbb.csv
 	popd > /dev/null
-#	process_specjbb_data
 	rm -f results_pbench.tar 
 	working_dir=`ls -rtd /tmp/results*${test_name}* | grep -v tar | tail -1`
 	find $working_dir  -type f | tar --transform 's/.*\///g' -cf results_pbench.tar --files-from=/dev/stdin
