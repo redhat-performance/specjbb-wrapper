@@ -443,7 +443,7 @@ run_pbench_pbench_specjbb()
 	tar xvf  $to_home_root/$to_user/$specjbb_kit
 	ln -s SPECjbb2005 specjbb2005
 	pbench-specjbb2005 --heap-size=8192m --nr-jvms=$nr_jvms --start-warehouses=$start_warehouse --inc-warehouse=$increment_warehouse --runtime=$runtime --stop-warehouses=$end_warehouse
-	results_prefix=$to_puser"_instance_"$to_configuration
+	results_prefix=$to_puser"_instance_"$to_configuration_pin=${node_pinning}
 	for specdir in `ls -d /var/lib/pbench-agent/specjbb2005*`; do
 		pushd /tmp > /dev/null
 		RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
