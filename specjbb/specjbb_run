@@ -415,7 +415,6 @@ run_specjbb()
 	mv ${test_name}.out  results_${test_name}_${to_tuned_setting}
 	echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
         mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
-#	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 	mv $run_dir/*csv results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 	rm $run_dir/*_jvm_of_*
 	pushd results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp} > /dev/null
@@ -443,7 +442,7 @@ run_pbench_pbench_specjbb()
 	tar xvf  $to_home_root/$to_user/$specjbb_kit
 	ln -s SPECjbb2005 specjbb2005
 	pbench-specjbb2005 --heap-size=8192m --nr-jvms=$nr_jvms --start-warehouses=$start_warehouse --inc-warehouse=$increment_warehouse --runtime=$runtime --stop-warehouses=$end_warehouse
-	results_prefix=$to_puser"_instance_"$to_configuration_pin=${node_pinning}
+	results_prefix=$to_puser"_instance_"$to_configuration}
 	for specdir in `ls -d /var/lib/pbench-agent/specjbb2005*`; do
 		pushd /tmp > /dev/null
 		RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
@@ -472,8 +471,8 @@ run_pbench_pbench_specjbb()
         export hostname
         results_prefix=`echo $value | cut -d: -f 2`
 
-        echo $TOOLS_BIN/pbench_copy_data --hostname "${to_puser}_${to_run_label}" --user "${to_puser}" --prefix ${results_prefix}
-        $TOOLS_BIN/pbench_copy_data --hostname "${to_puser}_${to_run_label}" --user "${to_puser}" --prefix ${results_prefix}
+        echo $TOOLS_BIN/pbench_copy_data --hostname "${to_puser}_${to_run_label}" --user "${to_puser}" --prefix "${results_prefix}_pin=${node_pinning}"
+        $TOOLS_BIN/pbench_copy_data --hostname "${to_puser}_${to_run_label}" --user "${to_puser}" --prefix "${results_prefix}_pin=${node_pinning}"
 }
 
 #
