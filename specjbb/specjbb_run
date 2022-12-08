@@ -24,6 +24,7 @@
 #
 # Defined options
 #
+full_command="$0 $@"
 arguments="$@"
 numb_jvms=0
 test_name="specjbb"
@@ -407,10 +408,8 @@ run_specjbb()
  
 	timestamp=`date | sed "s/ /_/g"`
 	pushd /tmp > /dev/null
-	RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
-        mkdir ${RESULTSDIR}
 	rm results_${test_name}_${to_tuned_setting} 
-        cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting}
+	mkdir results_${test_name}_${to_tuned_setting}
 	cp ${curdir}/meta_data.yml results_${test_name}_${to_tuned_setting}
 	mv ${test_name}.out  results_${test_name}_${to_tuned_setting}
 	echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
@@ -419,6 +418,8 @@ run_specjbb()
 	rm $run_dir/*_jvm_of_*
 	pushd results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp} > /dev/null
 	cp specjbb_total_jvms* results_specjbb.csv
+	echo $full_command > command_executed
+	touch node_pin=${node_pinning}
 	popd > /dev/null
 	rm -f results_pbench.tar 
 	working_dir=`ls -rtd /tmp/results*${test_name}* | grep -v tar | tail -1`
@@ -445,10 +446,7 @@ run_pbench_pbench_specjbb()
 	results_prefix=$to_puser"_instance_"$to_configuration}
 	for specdir in `ls -d /var/lib/pbench-agent/specjbb2005*`; do
 		pushd /tmp > /dev/null
-		RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
-        	mkdir ${RESULTSDIR}
-		rm results_${test_name}_${to_tuned_setting} 
-        	cp -R ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
+        	mkdir results_${test_name}_${to_tuned_setting} 
 		timestamp=`date | sed "s/ /_/g"`
 		
 		cp -R $specdir/results results_${test_name}_${to_tuned_setting}
@@ -689,9 +687,6 @@ fi
 # Iterate over the nodes
 #
 for entry in $nodes; do
-	#
-	# Node determination
-	#
 	if [ "${entry}" == "node" ]; then
         	nr_jvms=$numb_nodes
 	else
