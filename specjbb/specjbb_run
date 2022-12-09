@@ -55,6 +55,7 @@ if [ ! -f "/tmp/${test_name}.out" ]; then
         rm /tmp/${test_name}.out
         exit
 fi
+rm -rf /tmp/results*${test_name}*
 
 #
 # Get the directory were the command lives.
@@ -350,11 +351,14 @@ execute_specjbb()
 	# Start up all the jvms.
 	#	
 	for jvms in 0 `seq 1 1  $nr_jvms`; do
-		let "node_index=${jvms}+1"
+		if [ $jvms -eq 0 ]; then
+			continue
+		fi
 		if [[ $node_pinning == "y" ]]; then
-			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh $java_exec ${node_index} ${numb_jvms} >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
+			let "node_index=${jvms}-1"
+			numactl  --membind  $node_index --cpunodebind $node_index ./run.sh $java_exec ${jvms} ${numb_jvms} >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
 		else
-			./run.sh $java_exec ${node_index} ${numb_jvms}>> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
+			./run.sh $java_exec ${jvms} ${numb_jvms}>> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
 		fi
 		#
 		# Save the pid for later waiting.
@@ -479,7 +483,7 @@ run_pbench_pbench_specjbb()
 run_specjbb_via_pbench()
 {
 	cd ${curdir}
-	$TOOLS_BIN/execute_via_pbench --cmd_executing "$0" $arguments --test $test_name --spacing 11 --pbench_stats $to_pstats
+	$TOOLS_BIN/execute_via_pbench --cmd_executing "$0" $arguments --test $test_name --spacing 11 --pbench_stats $to_pstats --nr-jvms $nr_jvms
 }
 
 usage()
