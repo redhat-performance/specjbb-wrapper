@@ -406,6 +406,7 @@ run_specjbb()
 		rm results_${test_name}_${to_tuned_setting} 
 
         	cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
+		mkdir results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 		echo 1 cp -R -s  ${RESULTSDIR} results_${test_name}_${to_tuned_setting} >> /tmp/mkdir_debug
 		cp ${curdir}/meta_data.yml results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 		cp  /tmp/${test_name}.cmd results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}

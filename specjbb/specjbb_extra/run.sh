@@ -47,7 +47,7 @@ if [[ $cpu_type == "aarch64" ]]; then
 	# If having issues with stack size during run
 	# make the change here.
 	#
-	 xss_value="-Xss448k"
+	 xss_value="-Xss470k"
 else
 	 xss_value="-Xss330k"
 fi
