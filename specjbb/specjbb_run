@@ -244,7 +244,7 @@ set_prop_file()
 	# syntax of $1
 	# ENDWH=<val>:STARTWH=<val> and so forth.
 	#
-	if [[ $1 != "none" ]]; then
+	if [[ $1 == *"ENDWH"* ]]; then
 		config=`echo $1 | cut -d: -f 1`
 		config_list=`echo $1 | cut -d: -f 2-1000`
 		work_with=`echo $config_list | sed "s/:/ /g"`
@@ -253,15 +253,15 @@ set_prop_file()
 			value=`echo $i | cut -d'=' -f 2`
 
 			if [[ $field == "ENDWH" ]]; then
-				end_warehouse=$value
+				end_warehouse_val=`echo "${value}/${numb_jvms}" | bc`
 				continue
 			fi
 			if [[ $field == "INCWH" ]]; then
-				increment_warehouse=$value
+				increment_warehouse_val=`echo "${value}/${numb_jvms}" | bc`
 				continue
 			fi
 			if [[ $field == "STARTWH" ]]; then
-				start_warehouse=$value
+				start_warehouse_val=`echo "${value}/${numb_jvms}" | bc`
 				continue
 			fi
 			if [[ $field == "RAMPUP_TIME" ]]; then
@@ -273,6 +273,10 @@ set_prop_file()
 				continue
 			fi
 		done
+	else
+		end_warehouse_val=`echo "${end_warehouse}/${numb_jvms}" | bc`
+		start_warehouse_val=`echo "${start_warehouse}/${numb_jvms}" | bc`
+		increment_warehouse_val=`echo "${increment_warehouse}/${numb_jvms}" | bc`
 	fi
 	if [ $regression -eq 1 ]; then
 		measurement=120
@@ -282,10 +286,10 @@ set_prop_file()
 	fi
 	sed "s/input.ramp_up_seconds=30/input.ramp_up_seconds=${ramp_up}/g" $run_dir/SPECjbb.props > /tmp/temp
 	sed "s/input.measurement_seconds=240/input.measurement_seconds=${measurement}/g" /tmp/temp > /tmp/temp1
-	sed "s/#input.ending_number_warehouses=2/input.ending_number_warehouses=${end_warehouse}/g" /tmp/temp1 > /tmp/temp
-	sed "s/input.starting_number_warehouses=1/input.starting_number_warehouses=${start_warehouse}/g" /tmp/temp > /tmp/temp1
+	sed "s/#input.ending_number_warehouses=2/input.ending_number_warehouses=${end_warehouse_val}/g" /tmp/temp1 > /tmp/temp
+	sed "s/input.starting_number_warehouses=1/input.starting_number_warehouses=${start_warehouse_val}/g" /tmp/temp > /tmp/temp1
 	sed "s/input.output_directory=results/input.output_directory=results_specjbb/g" /tmp/temp1 > /tmp/temp
-	sed "s/input.increment_number_warehouses=1/input.increment_number_warehouses=${increment_warehouse}/g" /tmp/temp > $run_dir/prop.file
+	sed "s/input.increment_number_warehouses=1/input.increment_number_warehouses=${increment_warehouse_val}/g" /tmp/temp > $run_dir/prop.file
 }
 
 #
@@ -330,6 +334,7 @@ execute_specjbb()
 {
 	set_prop_file $numb_jvms $1
 	timestamp=$2
+
 	#
 	# Start up all the jvms.
 	#	
