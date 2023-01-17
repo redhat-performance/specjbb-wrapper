@@ -230,8 +230,6 @@ reduce_data()
 		echo $wh_jvm:$total >> $total_file
 		echo reduce_data total: $total $total_file >> /tmp/reduce_data
 	done < "$results_file"
-# Uncommented these
-	rm -rf $temp_dir 
 	rm -rf $temp_dir  $files
 }
 
@@ -340,7 +338,6 @@ execute_specjbb()
 	#	
 	for jvms in 0 `seq 1 1  $nr_jvms`; do
 		let "node_index=${jvms}+1"
-		echo we are here $nr_jvms >> /tmp/mkdir_debug
 		if [[ $node_pinning == "y" ]]; then
 			echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh $java_exec ${node_index} ${numb_jvms} ${timestamp}
 			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh $java_exec ${node_index} ${numb_jvms} ${timestamp} >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
@@ -359,7 +356,6 @@ execute_specjbb()
 	for pid in ${pids[*]}; do
 		wait $pid
 	done
-#	concat_files $nr_jvms
 	pushd results_specjbb > /dev/null
         reduce_data  $numb_jvms
 	popd > /dev/null
@@ -389,7 +385,6 @@ run_specjbb()
 	let nr_jvms="$nr_jvms-1"
 	timestamp=`date | sed "s/ /_/g"`
 	for iterations  in 1 `seq 2 1 $to_times_to_run`; do
-		echo we are in here $to_times_to_run $iterations >> /tmp/mkdir_debug
 		pindex=0
 		if test -f "$file"; then
         		while IFS= read -r specjbb_opts
@@ -405,14 +400,11 @@ run_specjbb()
 	if [[ $entries != "0" ]]; then
 		pushd /tmp > /dev/null
 		RESULTSDIR=results_${test_name}_${to_tuned_setting}_${timestamp}
-		echo 1 mkdir ${RESULTSDIR} >> /tmp/mkdir_debug
         	mkdir ${RESULTSDIR}
-        	echo 1 mkdir ${RESULTSDIR} >> /tmp/mkdir_debug
 		rm results_${test_name}_${to_tuned_setting} 
 
         	cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
 		mkdir results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
-		echo 1 cp -R -s  ${RESULTSDIR} results_${test_name}_${to_tuned_setting} >> /tmp/mkdir_debug
 		cp ${curdir}/meta_data.yml results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 		cp  /tmp/${test_name}.cmd results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 		mv /tmp/${test_name}.out  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
@@ -430,7 +422,6 @@ run_specjbb()
 			cp /tmp/results_${test_name}_${to_tuned_setting}.tar /tmp/results_pbench_${test_name}_${to_tuned_setting}.tar
 			last=`ls -d /var/lib/pbench-agent/*specjbb_test* | tail -n 1`
 			cp -R /tmp/results_${test_name}_${to_tuned_setting}  ${last}/1-1
-			echo 1 cp -R /tmp/results_${test_name}_${to_tuned_setting}  ${last}/1-1 >> /tmp/mkdir_debug
 		fi
 		popd > /dev/null
 	else
@@ -453,13 +444,10 @@ run_pbench_pbench_specjbb()
 		timestamp=$(date "+%Y.%m.%d-%H.%M.%S")
 		RESULTSDIR=results_${test_name}_${tuned_setting}_${timestamp}
         	mkdir ${RESULTSDIR}
-        	echo 2 mkdir ${RESULTSDIR} >> /tmp/mkdir_debug
 		rm results_${test_name}_${to_tuned_setting} 
         	cp -R ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
-        	echo 2 cp -R ${RESULTSDIR} results_${test_name}_${to_tuned_setting} >> /tmp/mkdir_debug
 		
 		cp -R $specdir/results results_${test_name}_${to_tuned_setting}
-        	echo 2 cp -R  $specdir/results results_${test_name}_${to_tuned_setting}  >> /tmp/mkdir_debug
 		mv results_${test_name}_${to_tuned_setting}/results results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 
 		#
