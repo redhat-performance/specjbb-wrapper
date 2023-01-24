@@ -1,7 +1,6 @@
 #!/bin/bash
 
 SCRIPTNAME=`basename $0`
-#exec > ${HOSTNAME%%\.*}.$SCRIPTNAME.out.`date +"%Y%m%d%H%M%S"`_jvm_${2}_of_${3} 2>&1
 exec > ${HOSTNAME%%\.*}.$SCRIPTNAME.out.${4}_jvm_${2}_of_${3} 2>&1
 
 
