@@ -1,0 +1,620 @@
+#!/bin/bash
+#                         License
+#
+# Copyright (C) 2021  David Valin dvalin@redhat.com
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#
+#
+#
+# specjbb-run script automates the specjbb-run based on system size.  It does not
+# include the actual specjbb kit, that is left to the end user to provide.
+#
+# Defined options
+#
+arguments="$@"
+test_name="specjbb"
+declare -a nodes
+nodes_count=0
+ramp_up=60
+runtime=120
+measurement=60
+node_pinning="n"
+node_list="1,node"
+nr_jvms=0
+config="none"
+specjbb_opts="none"
+execname=$0
+regression=0
+use_pbench_version=0
+specjbb_kit=""
+java_exec="/bin/java"
+test_status="Ran"
+
+tools_git=https://github.com/redhat-performance/test_tools-wrappers
+
+if [ ! -f "/tmp/${test_name}.out" ]; then
+        command="${0} $@"
+        echo $command
+        $command &> /tmp/${test_name}.out
+        cat /tmp/${test_name}.out
+        rm /tmp/${test_name}.out
+        exit
+fi
+
+#
+# Get the directory were the command lives.
+#
+curdir=`pwd`
+if [[ $0 == "./"* ]]; then
+	chars=`echo $0 | awk -v RS='/' 'END{print NR-1}'`
+	if [[ $chars == 1 ]]; then
+		run_dir=`pwd`
+	else
+		run_dir=`echo $0 | cut -d'/' -f 1-${chars} | cut -d'.' -f2-`
+		run_dir="${curdir}${run_dir}"
+	fi
+else
+	chars=`echo $0 | awk -v RS='/' 'END{print NR-1}'`
+	run_dir=`echo $0 | cut -d'/' -f 1-${chars}`
+fi
+
+#
+# How many cpus in the system
+#
+wcpus=`cat /proc/cpuinfo | grep processor | wc -l`
+wcpus=`echo "${wcpus}*2" | bc`
+
+#
+# Setup the default warehouses and increments.
+#
+end_warehouse_full=$wcpus
+if [ $wcpus -gt 16 ]; then
+	increment_warehouse=`echo "${end_warehouse_full}/8" | bc`
+	start_warehouse=`echo "(${end_warehouse_full}-(${increment_warehouse}*8))+${increment_warehouse}" | bc`
+else
+	start_warehouse=2
+	increment_warehouse=2
+fi
+
+#
+# results_specjbb.csv header
+#
+process_header()
+{
+	echo "Warehouses:Bops" >> $1
+}
+
+#
+# Reduce the data.  We take the max for each warehouse
+#
+process_specjbb_data()
+{
+
+	lvl1=`ls -td results_*specjbb*tuned* | grep -v tar | tail -1`
+	for lvl2 in `ls -d $lvl1/results_specjbb*`; do
+		pushd $lvl2 > /tmp/null
+		csv_file=`pwd`/results_${test_name}.csv
+		if [[ ! -d "SPECjbbSingleJVM" ]]; then
+			popd > /dev/null
+			continue
+		fi
+		cd SPECjbbSingleJVM
+		process_header $csv_file
+		rm reduce_out
+		for i in `ls SPEC*txt`; do
+			grep new_order $i | awk '{ print $1,$2 }' >> reduce_out
+		done
+		sort -n reduce_out > sorted
+
+		total_load=0
+		value=0
+		load=0
+		while IFS= read -r line
+		do
+			load_pt=`echo $line | awk '{ print $1 }'`
+			wvalue=`echo $line | awk '{ print $2 }'`
+			if [ $load -eq 0 ]; then
+				load=$load_pt
+				total_load=$load
+				value=$wvalue
+				continue
+			fi
+			if [ $load_pt -eq $load ]; then
+				value=${value}+${wvalue}
+				total_load=${total_load}+${load_pt}
+				continue
+			fi
+			total=`echo "$value" | bc`
+			full_load=`echo "$total_load" | bc`
+			echo $full_load:${total} >> $csv_file
+			load=$load_pt
+			total_load=$load
+			value=$wvalue
+		done < "sorted"
+		popd > /tmp/null
+	done
+}
+
+#
+# Populate the property file with the appropriate information.
+#
+set_prop_file()
+{
+	#
+	# syntax of $1
+	# ENDWH=<val>:STARTWH=<val> and so forth.
+	#
+	if [[ $1 != "none" ]]; then
+		config=`echo $1 | cut -d: -f 1`
+		config_list=`echo $1 | cut -d: -f 2-1000`
+		work_with=`echo $config_list | sed "s/:/ /g"`
+		for i in $work_with; do
+			field=`echo $i | cut -d'=' -f 1`
+			value=`echo $i | cut -d'=' -f 2`
+
+			if [[ $field == "ENDWH" ]]; then
+				end_warehouse=$value
+				continue
+			fi
+			if [[ $field == "INCWH" ]]; then
+				increment_warehouse=$value
+				continue
+			fi
+			if [[ $field == "STARTWH" ]]; then
+				start_warehouse=$value
+				continue
+			fi
+			if [[ $field == "RAMPUP_TIME" ]]; then
+				ramp_up=$value
+				continue
+			fi
+			if [[ $field == "MEASURE_TIME" ]]; then
+				measurement=$value
+				continue
+			fi
+		done
+	fi
+	if [ $regression -eq 1 ]; then
+		measurement=120
+		increment_by=`echo "${end_warehouse}/8" | bc`
+		increment_warehouse=$increment_by
+
+	fi
+	sed "s/input.ramp_up_seconds=30/input.ramp_up_seconds=${ramp_up}/g" $run_dir/SPECjbb.props > /tmp/temp
+	sed "s/input.measurement_seconds=240/input.measurement_seconds=${measurement}/g" /tmp/temp > /tmp/temp1
+	sed "s/#input.ending_number_warehouses=2/input.ending_number_warehouses=${end_warehouse}/g" /tmp/temp1 > /tmp/temp
+	sed "s/input.starting_number_warehouses=1/input.starting_number_warehouses=${start_warehouse}/g" /tmp/temp > /tmp/temp1
+	sed "s/input.output_directory=results/input.output_directory=results_specjbb/g" /tmp/temp1 > /tmp/temp
+	sed "s/input.increment_number_warehouses=1/input.increment_number_warehouses=${increment_warehouse}/g" /tmp/temp > $run_dir/prop.file
+}
+
+#
+# Obtain node information
+#
+obtain_nodes()
+{
+	ocurdir=`pwd`
+	for i in ` ls -d /sys/devices/system/node/node*`; do
+		cd $i
+		cpu_list=""
+		seper=""
+		for j in `ls -d cpu* | grep -v map | grep -v list | sed "s/cpu//"`; do
+			cpu_list=${cpu_list}${seper}${j}
+			seper=','
+		done
+		nodes[$nodes_count]=$cpu_list
+		let "nodes_count=$nodes_count+1"
+	done
+
+	let "nodes_count=$nodes_count-1"
+	cd $ocurdir
+}
+
+#
+# Group the output files
+#
+concat_files()
+{
+	for njobs  in 0 `seq 1 1 $1`; do
+		cat /tmp/${test_name}_${to_tuned_setting}_job_${njobs}.out >> /tmp/${test_name}_${to_tuned_setting}.out
+		rm /tmp/${test_name}_${to_tuned_setting}_job_${njobs}.out
+	done
+}
+
+#
+# Execute specjbb.  Passed in is 
+#  syntax of $1
+#  ENDWH=<val>:STARTWH=<val> and so forth.
+#
+execute_specjbb()
+{
+	set_prop_file $1
+
+	#
+	# Start up all the jvms.
+	#	
+	for jvms in 0 `seq 1 1  $nr_jvms`; do
+		if [[ $node_pinning == "y" ]]; then
+			echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh $java_exec
+			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
+		else
+			./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
+		fi
+
+		#
+		# Save the pid for later waiting.
+		#
+		pids[${pindex}]=$!
+		let "pindex=$pindex+1"
+	done
+	#
+	# Wait for every one to finish.
+	#
+	for pid in ${pids[*]}; do
+		wait $pid
+	done
+	concat_files $nr_jvms
+}
+
+#
+# Run the specjbb benchmark
+#
+run_specjbb()
+{
+	declare -a pids
+	pindex=0
+
+	#
+	# Prepare things for execution.
+	#
+	cp $run_dir/specjbb_extra/run.sh $run_dir
+	cd $run_dir
+
+	#
+	# Prepare things for execution.
+	#
+	file=`/$to_home_root/$to_user/tools_bin/get_params_file -d /$to_home_root/$to_user -c ${to_sysname} -t ${test_name}`
+
+	# Arrays are 0 based
+	let nr_jvms="$nr_jvms-1"
+	for iterations  in 1 `seq 2 1 $to_times_to_run`; do
+		pindex=0
+		if test -f "$file"; then
+        		while IFS= read -r specjbb_opts
+			do
+				execute_specjbb $specjbb_opts
+        		done < "$file"
+		else
+			execute_specjbb $specjbb_opts
+		fi
+	done
+ 
+	timestamp=`date | sed "s/ /_/g"`
+	pushd /tmp > /dev/null
+	RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
+        mkdir ${RESULTSDIR}
+	rm results_${test_name}_${to_tuned_setting} 
+        cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
+	cp ${curdir}/meta_data.yml results_${test_name}_${to_tuned_setting}
+	mv ${test_name}.out  results_${test_name}_${to_tuned_setting}
+	echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
+
+	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
+	process_specjbb_data
+	rm -f results_pbench.tar 
+	working_dir=`ls -rtd /tmp/results*${test_name}* | grep -v tar | tail -1`
+	find $working_dir  -type f | tar --transform 's/.*\///g' -cf results_pbench.tar --files-from=/dev/stdin
+	tar hcf results_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting}
+	popd > /dev/null
+
+	if [ -d "/var/lib/pbench-agent"  ]; then
+		cp /tmp/results_${test_name}_${to_tuned_setting}.tar /tmp/results_pbench_${test_name}_${to_tuned_setting}.tar
+		last=`ls -d /var/lib/pbench-agent/*specjbb_test* | tail -n 1`
+		cp -R /tmp/results_${test_name}_${to_tuned_setting}  ${last}/1-1
+	fi
+}
+
+#
+# Run the test via pbench.
+#
+run_pbench_pbench_specjbb()
+{
+	cd /usr/local/share/
+	tar xvf  /$to_home_root/$to_user/uploads/$specjbb_kit
+	ln -s SPECjbb2005 specjbb2005
+	pbench-specjbb2005 --heap-size=8192m --nr-jvms=$nr_jvms --start-warehouses=$start_warehouse --inc-warehouse=$increment_warehouse --runtime=$runtime --stop-warehouses=$end_warehouse
+	results_prefix=$to_puser"_instance_"$to_configuration
+	for specdir in `ls -d /var/lib/pbench-agent/specjbb2005*`; do
+		pushd /tmp
+		RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
+        	mkdir ${RESULTSDIR}
+		rm results_${test_name}_${to_tuned_setting} 
+        	cp -R ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
+		timestamp=`date | sed "s/ /_/g"`
+		
+		cp -R $specdir/results results_${test_name}_${to_tuned_setting}
+		mv results_${test_name}_${to_tuned_setting}/results results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
+
+		#
+		# Now handle the results file for the pbench run
+		#
+		process_specjbb_data
+		tar hcf results_pbench_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting}
+		popd > /dev/null
+		mkdir $specdir/results/wrapper_results
+		pushd $specdir/results/wrapper_results
+		tar xf /tmp/results_pbench_${test_name}_${to_tuned_setting}.tar
+		popd
+	done
+	value=`$TOOLS_BIN/set_pbench_variables --host_config $to_configuration --sys_type $to_sys_type --test ${test_name} --pbench_user $to_puser --run_label $to_run_label`
+        hostname=`echo $value | cut -d: -f 1| sed "s/${to_puser}_//g"`
+
+        export hostname
+        results_prefix=`echo $value | cut -d: -f 2`
+
+        echo $TOOLS_BIN/pbench_copy_data --hostname "${to_puser}_${to_run_label}" --user "${to_puser}" --prefix ${results_prefix}
+        $TOOLS_BIN/pbench_copy_data --hostname "${to_puser}_${to_run_label}" --user "${to_puser}" --prefix ${results_prefix}
+}
+
+#
+# Run specjbb via execute_pbench
+#
+run_specjbb_via_pbench()
+{
+	cd ${curdir}
+	$TOOLS_BIN/execute_via_pbench --cmd_executing "$0" $arguments --test $test_name --spacing 11 --pbench_stats $to_pstats
+}
+
+usage()
+{
+	echo "Usage $1:"
+	echo "  --inc-warehouses: how many warehouses to increment each time, default"
+	echo "    else increment_warehouse=echo ${end_warehouse}/8"
+	echo "  --max_nodes: Runs one jvm per node"
+	echo "  --node_pinning: If set to y, then will bind to the numa node, default is n"
+	echo "  --nr-jvms: number of jvms to use, default 1 and the # numa nodes"
+	echo "  --regression: regression runs, settings, measurement=120, total 8 warehouse data points"
+	echo "  --start-warehouses: Number of warehouses to start at, default 2, if cpus < 16 else value is calculated."
+	echo "  --stop-warehouse: Warehouses top stop at.  Default is ncpus"
+	echo "  --usage: this is usage message"
+	echo "  --use_pbench_version: Instead of running the wrappers version"
+	echo "    of specjbb, use pbench-specjbb when pbench is requested"
+	source test_tools/general_setup --usage
+}
+
+
+found=0
+show_usage=0
+for arg in "$@"; do
+	if [ $found -eq 1 ]; then
+		tools_git=$arg
+		found=0
+	fi
+	if [[ $arg == "--tools_git" ]]; then
+		found=1
+	fi
+
+	#
+	# We do the usage check here, as we do not want to be calling
+	# the common parsers then checking for usage here.  Doing so will
+	# result in the script exiting with out giving the test options.
+	#
+	if [[ $arg == "--usage" ]]; then
+		show_usage=1
+	fi
+done
+
+#
+# Check to see if the test tools directory exists.  If it does, we do not need to
+# clone the repo.
+#
+if [ ! -d "test_tools" ]; then
+        git clone $tools_git test_tools
+        if [ $? -ne 0 ]; then
+                echo pulling git $tools_git failed.
+                exit
+        fi
+fi
+
+if [ $show_usage -eq 1 ]; then
+	usage $0
+fi
+
+# Variables set by general setup.
+#
+# TOOLS_BIN: points to the tool directory
+# to_home_root: home directory
+# to_configuration: configuration information
+# to_times_to_run: number of times to run the test
+# to_pbench: Run the test via pbench
+# to_puser: User running pbench
+# to_run_label: Label for the run
+# to_user: User on the test system running the test
+# to_sys_type: for results info, basically aws, azure or local
+# to_sysname: name of the system
+# to_tuned_setting: tuned setting
+#
+
+source test_tools/general_setup "$@"
+
+ARGUMENT_LIST=(
+	"inc-warehouses"
+	"iterations"
+	"max_jvms"
+	"nr-jvms"
+	"node_pinning"
+	"java_exec"
+	"runtime"
+	"specjbb_kit"
+	"start-warehouses"
+	"stop-warehouses"
+)
+
+NO_ARGUMENTS=(
+	"regression"
+	"use_pbench_version"
+)
+
+# read arguments
+opts=$(getopt \
+    --longoptions "$(printf "%s:," "${ARGUMENT_LIST[@]}")" \
+    --longoptions "$(printf "%s," "${NO_ARGUMENTS[@]}")" \
+    --name "$(basename "$0")" \
+    --options "h" \
+    -- "$@"
+)
+
+#
+# Verify there were no errors
+#
+if [ $? -ne 0 ]; then
+	exit
+fi
+
+eval set --$opts
+#
+# Determine how many numa nodes we have.
+# We will run on each node.  If regression is designated we will
+# run on 1 node and the maximum number of nodes.
+#
+numb_nodes=$(ls -1d /sys/devices/system/node/node* | wc -l)
+
+while [[ $# -gt 0 ]]; do
+        case "$1" in
+		--inc-warehouses)
+			increment_warehouse=$2
+			shift 2
+		;;
+		--max_jvms)
+			nr_jvms=$numb_nodes
+			shift 1
+		;;
+		--node_pinning)
+			node_pinning=$2
+			shift 2
+		;;
+		--nr-jvms)
+			node_list=$2
+			shift 2
+		;;
+		--java_exec)
+			java_exec=$2
+			shift 2
+		;;
+		--regression)
+			regression=1
+			shift 1
+		;;
+		--runtime)
+			untime=$2
+			shift 2
+		;;
+		--specjbb_kit)
+			specjbb_kit=$2
+			shift 2
+		;;
+		--start-warehouses)
+			start_warehouse=$2
+			shift 2
+		;;
+		--stop-warehouses)
+			end_warehouse=$2
+			shift 2
+		;;
+		-h)
+			usage $0
+		;;
+		--use_pbench_version)
+			use_pbench_version=1
+			shift 1
+		;;
+		--)
+			break; 
+		;;
+		*)
+			echo option not found $1
+			usage $0
+		;;
+	esac
+done
+
+if [ $numb_nodes -eq 1 ]; then
+	nodes="1"
+else
+	nodes=`echo ${node_list} | sed "s/,/ /g"`
+fi
+
+if [[ ${specjbb_kit} == "" ]]; then
+	pushd /$to_home_root/$to_user/uploads > /dev/null
+	specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
+	if [[ $specjbb_kit == "SPECjbb2005_"* ]] && [[ $specjbb_kit == *"tar.gz" ]] ; then
+		specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
+	fi
+	popd >& /dev/null
+fi
+pushd $run_dir
+cd ..
+mkdir specjbb
+cd specjbb
+tar xf /$to_home_root/$to_user/uploads/$specjbb_kit
+cp -R SPECjbb2005/* .
+popd
+
+if [ $regression -eq 1 ]; then
+	nodes="1 ${numb_nodes}"
+fi
+
+#
+# Iterate over the nodes
+#
+for entry in $nodes; do
+	#
+	# Node determination
+	#
+	if [ "${entry}" == "node" ]; then
+        	nr_jvms=$numb_nodes
+	else
+		nr_jvms=$entry
+	fi
+
+	if [ $nr_jvms -gt $numb_nodes ]; then
+		echo Error: number of nodes requested, $nr_jvms is greater then the number nodes in the system $numb_nodes
+		echo skipping node $numb_nodes
+		continue
+	fi
+
+	if [[ $node_pinning == "y" ]]; then
+		obtain_nodes
+	fi
+	if [ $wcpus -gt 16 ]; then
+		total_warehouses=${end_warehouse_full}
+		end_warehouse=`echo "${total_warehouses}/${nr_jvms}" | bc`
+		increment_warehouse=`echo "${end_warehouse}/8" | bc`
+		start_warehouse=`echo "(${end_warehouse}-(${increment_warehouse}*8))+${increment_warehouse}" | bc`
+	else
+		end_warehouse=`echo "${end_warehouse_full}*2" | bc`
+	fi
+
+	if [ $to_pbench -eq 1 ]; then
+		if [ $use_pbench_version -eq 1 ]; then
+			run_pbench_pbench_specjbb
+		else
+			run_specjbb_via_pbench
+		fi
+	else
+		run_specjbb
+	fi
+done
