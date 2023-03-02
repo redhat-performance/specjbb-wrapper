@@ -80,10 +80,10 @@ wcpus=`echo "${wcpus}*2" | bc`
 #
 # Setup the default warehouses and increments.
 #
-end_warehouse=$wcpus
+end_warehouse_full=$wcpus
 if [ $wcpus -gt 16 ]; then
-	increment_warehouse=`echo "${end_warehouse}/8" | bc`
-	start_warehouse=`echo "(${end_warehouse}-(${increment_warehouse}*8))+${increment_warehouse}" | bc`
+	increment_warehouse=`echo "${end_warehouse_full}/8" | bc`
+	start_warehouse=`echo "(${end_warehouse_full}-(${increment_warehouse}*8))+${increment_warehouse}" | bc`
 else
 	start_warehouse=2
 	increment_warehouse=2
@@ -101,6 +101,54 @@ process_header()
 # Reduce the data.  We take the max for each warehouse
 #
 process_specjbb_data()
+{
+
+	lvl1=`ls -td results_*specjbb*tuned* | grep -v tar | tail -1`
+	for lvl2 in `ls -d $lvl1/results_specjbb*`; do
+		pushd $lvl2 > /tmp/null
+		csv_file=`pwd`/results_${test_name}.csv
+		if [[ ! -d "SPECjbbSingleJVM" ]]; then
+			popd > /dev/null
+			continue
+		fi
+		cd SPECjbbSingleJVM
+		process_header $csv_file
+		rm reduce_out
+		for i in `ls SPEC*txt`; do
+			grep new_order $i | awk '{ print $1,$2 }' >> reduce_out
+		done
+		sort -n reduce_out > sorted
+
+		total_load=0
+		value=0
+		load=0
+		while IFS= read -r line
+		do
+			load_pt=`echo $line | awk '{ print $1 }'`
+			wvalue=`echo $line | awk '{ print $2 }'`
+			if [ $load -eq 0 ]; then
+				load=$load_pt
+				total_load=$load
+				value=$wvalue
+				continue
+			fi
+			if [ $load_pt -eq $load ]; then
+				value=${value}+${wvalue}
+				total_load=${total_load}+${load_pt}
+				continue
+			fi
+			total=`echo "$value" | bc`
+			full_load=`echo "$total_load" | bc`
+			echo $full_load:${total} >> $csv_file
+			load=$load_pt
+			total_load=$load
+			value=$wvalue
+		done < "sorted"
+		popd > /tmp/null
+	done
+}
+
+process_specjbb_data1()
 {
 	total_data=$(mktemp /tmp/specjbb_data.XXXXXX)
 	#
@@ -230,7 +278,7 @@ set_prop_file()
 #
 obtain_nodes()
 {
-	curdir=`pwd`
+	ocurdir=`pwd`
 	for i in ` ls -d /sys/devices/system/node/node*`; do
 		cd $i
 		cpu_list=""
@@ -244,7 +292,7 @@ obtain_nodes()
 	done
 
 	let "nodes_count=$nodes_count-1"
-	cd $curdir
+	cd $ocurdir
 }
 
 #
@@ -270,13 +318,18 @@ execute_specjbb()
 	#
 	# Start up all the jvms.
 	#	
+	echo jvms $nr_jvms >> /tmp/dave_debug
 	for jvms in 0 `seq 1 1  $nr_jvms`; do
+		echo run away >> /tmp/dave_debug
 		if [[ $node_pinning == "y" ]]; then
 			echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh $java_exec
 			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
 		else
+			pwd >> /tmp/dave_debug
+			echo "./run.sh $java_exec"  >> /tmp/dave_debug
 			./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
 		fi
+
 		#
 		# Save the pid for later waiting.
 		#
@@ -313,14 +366,19 @@ run_specjbb()
 
 	# Arrays are 0 based
 	let nr_jvms="$nr_jvms-1"
+	echo $specjbb_opts >> /tmp/specjbb_opts
+	echo here are >> /tmp/dave_debug
 	for iterations  in 1 `seq 2 1 $to_times_to_run`; do
 		pindex=0
+		echo here are 1 >> /tmp/dave_debug
 		if test -f "$file"; then
         		while IFS= read -r specjbb_opts
 			do
 				execute_specjbb $specjbb_opts
         		done < "$file"
 		else
+			echo here are 2 >> /tmp/dave_debug
+			echo nr_jvms $nr_jvms >> /tmp/dave_debug
 			execute_specjbb $specjbb_opts
 		fi
 	done
@@ -356,7 +414,7 @@ run_specjbb()
 run_pbench_pbench_specjbb()
 {
 	cd /usr/local/share/
-	tar xvf  $to_home_root/$to_user/uploads/$specjbb_kit
+	tar xvf  /$to_home_root/$to_user/uploads/$specjbb_kit
 	ln -s SPECjbb2005 specjbb2005
 	pbench-specjbb2005 --heap-size=8192m --nr-jvms=$nr_jvms --start-warehouses=$start_warehouse --inc-warehouse=$increment_warehouse --runtime=$runtime --stop-warehouses=$end_warehouse
 	results_prefix=$to_puser"_instance_"$to_configuration
@@ -580,18 +638,16 @@ else
 	nodes=`echo ${node_list} | sed "s/,/ /g"`
 fi
 
-pushd /$to_home_root/$to_user/uploads
 if [[ ${specjbb_kit} == "" ]]; then
+	pushd /$to_home_root/$to_user/uploads > /dev/null
 	specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
-	if [[ $specjbb_kit == *"tar.gz" ]]; then
-		tar xf $specjbb_kit
+	if [[ $specjbb_kit == "SPECjbb2005_"* ]] && [[ $specjbb_kit == *"tar.gz" ]] ; then
 		specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
 	fi
+	popd >& /dev/null
 fi
-popd
 pushd $run_dir
 cd ..
-tar xf /$to_home_root/$to_user/uploads/$specjbb_kit
 mkdir specjbb
 cd specjbb
 tar xf /$to_home_root/$to_user/uploads/$specjbb_kit
@@ -614,6 +670,7 @@ for entry in $nodes; do
 	else
 		nr_jvms=$entry
 	fi
+	echo $nr_jvms >> /tmp/djv_nodes
 
 	if [ $nr_jvms -gt $numb_nodes ]; then
 		echo Error: number of nodes requested, $nr_jvms is greater then the number nodes in the system $numb_nodes
@@ -624,7 +681,14 @@ for entry in $nodes; do
 	if [[ $node_pinning == "y" ]]; then
 		obtain_nodes
 	fi
-
+	if [ $wcpus -gt 16 ]; then
+		total_warehouses=${end_warehouse_full}
+		end_warehouse=`echo "${total_warehouses}/${nr_jvms}" | bc`
+		increment_warehouse=`echo "${end_warehouse}/8" | bc`
+		start_warehouse=`echo "(${end_warehouse}-(${increment_warehouse}*8))+${increment_warehouse}" | bc`
+	else
+		end_warehouse=`echo "${end_warehouse_full}*2" | bc`
+	fi
 
 	if [ $to_pbench -eq 1 ]; then
 		if [ $use_pbench_version -eq 1 ]; then
