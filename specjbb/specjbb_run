@@ -356,7 +356,7 @@ run_specjbb()
 run_pbench_pbench_specjbb()
 {
 	cd /usr/local/share/
-	tar xvf  $to_home_root/$to_user/$specjbb_kit
+	tar xvf  $to_home_root/$to_user/uploads/$specjbb_kit
 	ln -s SPECjbb2005 specjbb2005
 	pbench-specjbb2005 --heap-size=8192m --nr-jvms=$nr_jvms --start-warehouses=$start_warehouse --inc-warehouse=$increment_warehouse --runtime=$runtime --stop-warehouses=$end_warehouse
 	results_prefix=$to_puser"_instance_"$to_configuration
@@ -580,7 +580,7 @@ else
 	nodes=`echo ${node_list} | sed "s/,/ /g"`
 fi
 
-pushd /$to_home_root/$to_user
+pushd /$to_home_root/$to_user/uploads
 if [[ ${specjbb_kit} == "" ]]; then
 	specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
 	if [[ $specjbb_kit == *"tar.gz" ]]; then
@@ -591,10 +591,10 @@ fi
 popd
 pushd $run_dir
 cd ..
-tar xf /$to_home_root/$to_user/$specjbb_kit
+tar xf /$to_home_root/$to_user/uploads/$specjbb_kit
 mkdir specjbb
 cd specjbb
-tar xf /$to_home_root/$to_user/$specjbb_kit
+tar xf /$to_home_root/$to_user/uploads/$specjbb_kit
 cp -R SPECjbb2005/* .
 popd
 
