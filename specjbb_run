@@ -148,6 +148,78 @@ process_specjbb_data()
 	done
 }
 
+process_specjbb_data1()
+{
+	total_data=$(mktemp /tmp/specjbb_data.XXXXXX)
+	#
+	# Locate the last created specjbb results
+	#
+	lvl1=`ls -td results_*specjbb*tuned* | grep -v tar | tail -1`
+	for lvl2 in `ls -d $lvl1/results_specjbb*`; do
+		pushd $lvl2 > /tmp/null
+		csv_file=`pwd`/results_${test_name}.csv
+		for dir_work in `ls -d SPEC*`; do
+			pushd $dir_work > /dev/null
+			process_header $csv_file
+	
+			for file_in in `ls *txt`; do
+				wh_found=0
+				cat $file_in | sed "s/[*]/ /g" > ${file_in}.out
+				while IFS= read -r data_in
+				do
+					#
+					# Keep reading until Warehouses is hit.  Then keep
+					# going until the new line is hit.
+					#
+					if [[ ${data_in} == *"Warehouses"* ]]; then
+						wh_found=1;
+						continue
+					fi
+					if [ $wh_found -eq 0 ]; then
+						continue
+					fi
+					cline=`echo $data_in | sed "s/^ //"`
+					if [[ $cline == "" ]]; then
+						break
+					fi
+					echo $cline | sed "s/ /:/g" >>  $total_data
+				done < "${file_in}.out"
+			done
+			sort -n $total_data > ${total_data}_sorted
+			#
+			# We now want the max for each warehouse count. It has been
+			# sorted, so all we do is pick up the warehouse change.
+			#
+			start_diff=0
+			cur_wh=0
+			while IFS= read -r data_in
+			do
+				wh_chk=`echo $data_in | cut -d: -f1`
+				if [ $start_diff -eq 0 ]; then
+					start_diff=1
+					cur_wh=$wh_chk
+					last_line=$data_in
+					continue
+				fi
+				if [ $cur_wh != $wh_chk ]; then
+					echo $last_line >> $csv_file
+					cur_wh=$wh_chk
+				fi
+				last_line=$data_in
+			done < "${total_data}_sorted"
+			echo $last_line >> $csv_file
+			echo "" >> $csv_file
+			popd > /dev/null
+			rm ${total_data}*
+		done
+		lines=`wc -l $csv_file | cut -d' ' -f 1`
+		if [ $lines -lt 2 ]; then
+			test_status="Failed"
+		fi
+		popd > /dev/null
+	done
+}
+
 #
 # Populate the property file with the appropriate information.
 #
@@ -246,11 +318,15 @@ execute_specjbb()
 	#
 	# Start up all the jvms.
 	#	
+	echo jvms $nr_jvms >> /tmp/dave_debug
 	for jvms in 0 `seq 1 1  $nr_jvms`; do
+		echo run away >> /tmp/dave_debug
 		if [[ $node_pinning == "y" ]]; then
 			echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh $java_exec
 			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
 		else
+			pwd >> /tmp/dave_debug
+			echo "./run.sh $java_exec"  >> /tmp/dave_debug
 			./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
 		fi
 
@@ -290,14 +366,19 @@ run_specjbb()
 
 	# Arrays are 0 based
 	let nr_jvms="$nr_jvms-1"
+	echo $specjbb_opts >> /tmp/specjbb_opts
+	echo here are >> /tmp/dave_debug
 	for iterations  in 1 `seq 2 1 $to_times_to_run`; do
 		pindex=0
+		echo here are 1 >> /tmp/dave_debug
 		if test -f "$file"; then
         		while IFS= read -r specjbb_opts
 			do
 				execute_specjbb $specjbb_opts
         		done < "$file"
 		else
+			echo here are 2 >> /tmp/dave_debug
+			echo nr_jvms $nr_jvms >> /tmp/dave_debug
 			execute_specjbb $specjbb_opts
 		fi
 	done
@@ -589,6 +670,7 @@ for entry in $nodes; do
 	else
 		nr_jvms=$entry
 	fi
+	echo $nr_jvms >> /tmp/djv_nodes
 
 	if [ $nr_jvms -gt $numb_nodes ]; then
 		echo Error: number of nodes requested, $nr_jvms is greater then the number nodes in the system $numb_nodes
