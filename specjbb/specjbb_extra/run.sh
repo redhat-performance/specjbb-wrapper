@@ -9,6 +9,9 @@ date
 hostname
 lscpu
 numactl --hardware
+if [ $? -ne 0 ]; then
+	echo Warning, unable to obtain numa hardware info.
+fi
 cat /proc/meminfo
 cat /etc/*release
 uname -a
@@ -55,3 +58,4 @@ fi
 $java \
 -Xms8192m -Xmx8192m $xss_value -XX:+UseParallelOldGC $aggressive -XX:+UseBiasedLocking -XX:+UseCompressedOops -XX:SurvivorRatio=24 spec.jbb.JBBmain -propfile $PROPS_FILE
 date
+exit $?

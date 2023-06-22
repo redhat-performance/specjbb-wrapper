@@ -24,6 +24,7 @@
 #
 # Defined options
 #
+rtc=0
 arguments="$@"
 test_name="specjbb"
 declare -a nodes
@@ -46,12 +47,15 @@ test_status="Ran"
 tools_git=https://github.com/redhat-performance/test_tools-wrappers
 
 if [ ! -f "/tmp/${test_name}.out" ]; then
-        command="${0} $@"
-        echo $command
-        $command &> /tmp/${test_name}.out
-        cat /tmp/${test_name}.out
-        rm /tmp/${test_name}.out
-        exit
+	command="${0} $@"
+	echo $command
+	$command &> /tmp/${test_name}.out
+	rtc=$?
+	if [[ -f /tmp/${test_name}.out ]]; then
+		cat /tmp/${test_name}.out
+		rm /tmp/${test_name}.out
+	fi
+	exit $?
 fi
 
 #
@@ -70,6 +74,12 @@ else
 	chars=`echo $0 | awk -v RS='/' 'END{print NR-1}'`
 	run_dir=`echo $0 | cut -d'/' -f 1-${chars}`
 fi
+
+error_out()
+{
+	echo $1
+	exit $2
+}
 
 #
 # How many cpus in the system
@@ -274,6 +284,9 @@ execute_specjbb()
 		if [[ $node_pinning == "y" ]]; then
 			echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh $java_exec
 			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
+			if [ $? -ne 0 ]; then
+				error_out "Warning: numactl failed" 1
+			fi
 		else
 			./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
 		fi
@@ -288,7 +301,13 @@ execute_specjbb()
 	#
 	for pid in ${pids[*]}; do
 		wait $pid
+		if [ $? -ne 0 ]; then
+			rtc=1
+		fi
 	done
+	if [ $rtc -ne 0 ]; then
+		echo "One or more specjbb jobs failed"
+	fi
 	concat_files $nr_jvms
 }
 
@@ -316,10 +335,10 @@ run_specjbb()
 	for iterations  in 1 `seq 2 1 $to_times_to_run`; do
 		pindex=0
 		if test -f "$file"; then
-        		while IFS= read -r specjbb_opts
+			while IFS= read -r specjbb_opts
 			do
 				execute_specjbb $specjbb_opts
-        		done < "$file"
+			done < "$file"
 		else
 			execute_specjbb $specjbb_opts
 		fi
@@ -328,9 +347,9 @@ run_specjbb()
 	timestamp=`date | sed "s/ /_/g"`
 	pushd /tmp > /dev/null
 	RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
-        mkdir ${RESULTSDIR}
+	mkdir ${RESULTSDIR}
 	rm results_${test_name}_${to_tuned_setting} 
-        cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
+	cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
 	cp ${curdir}/meta_data.yml results_${test_name}_${to_tuned_setting}
 	mv ${test_name}.out  results_${test_name}_${to_tuned_setting}
 	echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
@@ -363,9 +382,9 @@ run_pbench_pbench_specjbb()
 	for specdir in `ls -d /var/lib/pbench-agent/specjbb2005*`; do
 		pushd /tmp
 		RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
-        	mkdir ${RESULTSDIR}
+		mkdir ${RESULTSDIR}
 		rm results_${test_name}_${to_tuned_setting} 
-        	cp -R ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
+		cp -R ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
 		timestamp=`date | sed "s/ /_/g"`
 		
 		cp -R $specdir/results results_${test_name}_${to_tuned_setting}
@@ -383,13 +402,13 @@ run_pbench_pbench_specjbb()
 		popd
 	done
 	value=`$TOOLS_BIN/set_pbench_variables --host_config $to_configuration --sys_type $to_sys_type --test ${test_name} --pbench_user $to_puser --run_label $to_run_label`
-        hostname=`echo $value | cut -d: -f 1| sed "s/${to_puser}_//g"`
+	hostname=`echo $value | cut -d: -f 1| sed "s/${to_puser}_//g"`
 
-        export hostname
-        results_prefix=`echo $value | cut -d: -f 2`
+	export hostname
+	results_prefix=`echo $value | cut -d: -f 2`
 
-        echo $TOOLS_BIN/pbench_copy_data --hostname "${to_puser}_${to_run_label}" --user "${to_puser}" --prefix ${results_prefix}
-        $TOOLS_BIN/pbench_copy_data --hostname "${to_puser}_${to_run_label}" --user "${to_puser}" --prefix ${results_prefix}
+	echo $TOOLS_BIN/pbench_copy_data --hostname "${to_puser}_${to_run_label}" --user "${to_puser}" --prefix ${results_prefix}
+	$TOOLS_BIN/pbench_copy_data --hostname "${to_puser}_${to_run_label}" --user "${to_puser}" --prefix ${results_prefix}
 }
 
 #
@@ -399,6 +418,7 @@ run_specjbb_via_pbench()
 {
 	cd ${curdir}
 	$TOOLS_BIN/execute_via_pbench --cmd_executing "$0" $arguments --test $test_name --spacing 11 --pbench_stats $to_pstats
+	rtc=$?
 }
 
 usage()
@@ -445,11 +465,10 @@ done
 # clone the repo.
 #
 if [ ! -d "test_tools" ]; then
-        git clone $tools_git test_tools
-        if [ $? -ne 0 ]; then
-                echo pulling git $tools_git failed.
-                exit
-        fi
+	git clone $tools_git test_tools
+	if [ $? -ne 0 ]; then
+		error_out "pulling git $tools_git failed." 1
+	fi
 fi
 
 if [ $show_usage -eq 1 ]; then
@@ -504,7 +523,7 @@ opts=$(getopt \
 # Verify there were no errors
 #
 if [ $? -ne 0 ]; then
-	exit
+	error_out "Failed: parsing arguments." 1
 fi
 
 eval set --$opts
@@ -516,7 +535,7 @@ eval set --$opts
 numb_nodes=$(ls -1d /sys/devices/system/node/node* | wc -l)
 
 while [[ $# -gt 0 ]]; do
-        case "$1" in
+	case "$1" in
 		--inc-warehouses)
 			increment_warehouse=$2
 			shift 2
@@ -610,7 +629,7 @@ for entry in $nodes; do
 	# Node determination
 	#
 	if [ "${entry}" == "node" ]; then
-        	nr_jvms=$numb_nodes
+		nr_jvms=$numb_nodes
 	else
 		nr_jvms=$entry
 	fi
@@ -636,3 +655,4 @@ for entry in $nodes; do
 		run_specjbb
 	fi
 done
+exit $rtc
