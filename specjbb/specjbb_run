@@ -66,9 +66,15 @@ if [[ $0 == "./"* ]]; then
 		run_dir=`echo $0 | cut -d'/' -f 1-${chars} | cut -d'.' -f2-`
 		run_dir="${curdir}${run_dir}"
 	fi
+elif [[ $0 != "/"* ]]; then
+	dir=`echo $0 | rev | cut -d'/' -f2- | rev`
+	run_dir="${curdir}/${dir}"
 else
 	chars=`echo $0 | awk -v RS='/' 'END{print NR-1}'`
 	run_dir=`echo $0 | cut -d'/' -f 1-${chars}`
+	if [[ $run_dir != "/"* ]]; then
+		run_dir=${curdir}/${run_dir}
+	fi
 fi
 
 #
@@ -110,6 +116,7 @@ process_specjbb_data()
 	for lvl2 in `ls -d $lvl1/results_specjbb*`; do
 		pushd $lvl2 > /tmp/null
 		csv_file=`pwd`/results_${test_name}.csv
+		echo $csv_file > /tmp/dave
 		for dir_work in `ls -d SPEC*`; do
 			pushd $dir_work > /dev/null
 			process_header $csv_file
@@ -361,7 +368,7 @@ run_pbench_pbench_specjbb()
 	pbench-specjbb2005 --heap-size=8192m --nr-jvms=$nr_jvms --start-warehouses=$start_warehouse --inc-warehouse=$increment_warehouse --runtime=$runtime --stop-warehouses=$end_warehouse
 	results_prefix=$to_puser"_instance_"$to_configuration
 	for specdir in `ls -d /var/lib/pbench-agent/specjbb2005*`; do
-		pushd /tmp
+		pushd /tmp > /dev/null
 		RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
         	mkdir ${RESULTSDIR}
 		rm results_${test_name}_${to_tuned_setting} 
@@ -378,9 +385,9 @@ run_pbench_pbench_specjbb()
 		tar hcf results_pbench_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting}
 		popd > /dev/null
 		mkdir $specdir/results/wrapper_results
-		pushd $specdir/results/wrapper_results
+		pushd $specdir/results/wrapper_results > /dev/null
 		tar xf /tmp/results_pbench_${test_name}_${to_tuned_setting}.tar
-		popd
+		popd > /dev/null
 	done
 	value=`$TOOLS_BIN/set_pbench_variables --host_config $to_configuration --sys_type $to_sys_type --test ${test_name} --pbench_user $to_puser --run_label $to_run_label`
         hostname=`echo $value | cut -d: -f 1| sed "s/${to_puser}_//g"`
@@ -405,16 +412,16 @@ usage()
 {
 	echo "Usage $1:"
 	echo "  --inc-warehouses: how many warehouses to increment each time, default"
-	echo "    else increment_warehouse=echo ${end_warehouse}/8"
-	echo "  --max_nodes: Runs one jvm per node"
-	echo "  --node_pinning: If set to y, then will bind to the numa node, default is n"
-	echo "  --nr-jvms: number of jvms to use, default 1 and the # numa nodes"
-	echo "  --regression: regression runs, settings, measurement=120, total 8 warehouse data points"
+	echo "    else increment_warehouse=echo ${end_warehouse}/8."
+	echo "  --max_nodes: Runs one jvm per node."
+	echo "  --node_pinning: If set to y, then will bind to the numa node, default is n."
+	echo "  --nr-jvms: number of jvms to use, default 1 and the # numa nodes."
+	echo "  --regression: regression runs, settings, measurement=120, total 8 warehouse data points."
 	echo "  --start-warehouses: Number of warehouses to start at, default 2, if cpus < 16 else value is calculated."
-	echo "  --stop-warehouse: Warehouses top stop at.  Default is ncpus"
-	echo "  --usage: this is usage message"
-	echo "  --use_pbench_version: Instead of running the wrappers version"
-	echo "    of specjbb, use pbench-specjbb when pbench is requested"
+	echo "  --stop-warehouse: Warehouses top stop at.  Default is ncpus."
+	echo "  --usage: this is usage message."
+	echo "  --use_pbench_version: Instead of running the wrappers version."
+	echo "    of specjbb, use pbench-specjbb when pbench is requested."
 	source test_tools/general_setup --usage
 }
 
@@ -580,7 +587,7 @@ else
 	nodes=`echo ${node_list} | sed "s/,/ /g"`
 fi
 
-pushd /$to_home_root/$to_user/uploads
+pushd /$to_home_root/$to_user/uploads > /dev/null
 if [[ ${specjbb_kit} == "" ]]; then
 	specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
 	if [[ $specjbb_kit == *"tar.gz" ]]; then
@@ -588,15 +595,15 @@ if [[ ${specjbb_kit} == "" ]]; then
 		specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
 	fi
 fi
-popd
-pushd $run_dir
+popd > /dev/null
+pushd $run_dir > /dev/null
 cd ..
 tar xf /$to_home_root/$to_user/uploads/$specjbb_kit
 mkdir specjbb
 cd specjbb
 tar xf /$to_home_root/$to_user/uploads/$specjbb_kit
 cp -R SPECjbb2005/* .
-popd
+popd > /dev/null
 
 if [ $regression -eq 1 ]; then
 	nodes="1 ${numb_nodes}"
