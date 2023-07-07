@@ -29,6 +29,7 @@ To run:
 
 The script will by default set the starting and ending warehouses based on the size of the system.
 
+```
 Options
 /root/specjbb-wrapper///specjbb/specjbb_run --usage
 Usage /root/specjbb-wrapper///specjbb/specjbb_run:
@@ -58,3 +59,4 @@ General options
   --tuned_setting: used in naming the tar file, default for RHEL is the current active tuned.  For non
     RHEL systems, default is none.
   --usage: this usage message.
+```
