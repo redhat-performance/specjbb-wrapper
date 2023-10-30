@@ -55,7 +55,13 @@ else
 	 xss_value="-Xss330k"
 fi
 
+if [ $wcpus -gt 256 ]; then
+	stacksize=16384m
+else
+	stacksize=8192m
+fi
+echo "$java -Xms${stacksize} -Xmx${stacksize} $xss_value -XX:+UseParallelOldGC $aggressive -XX:+UseBiasedLocking -XX:+UseCompressedOops -XX:SurvivorRatio=24 spec.jbb.JBBmain -propfile $PROPS_FILE" >> /tmp/dave1
 $java \
--Xms8192m -Xmx8192m $xss_value -XX:+UseParallelOldGC $aggressive -XX:+UseBiasedLocking -XX:+UseCompressedOops -XX:SurvivorRatio=24 spec.jbb.JBBmain -propfile $PROPS_FILE
+-Xms${stacksize} -Xmx${stacksize} $xss_value -XX:+UseParallelOldGC $aggressive -XX:+UseBiasedLocking -XX:+UseCompressedOops -XX:SurvivorRatio=24 spec.jbb.JBBmain -propfile $PROPS_FILE
 date
 exit $?
