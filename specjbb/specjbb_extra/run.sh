@@ -55,6 +55,11 @@ else
 	 xss_value="-Xss330k"
 fi
 
+#
+# We need to increase the stack size when wcpus is over 256.  The smaller stack size
+# will cause specjbb to terminate early.  We do not want to make the larger stack
+# size as it will cause issues with the smaller cloud systems.
+#
 if [ $wcpus -gt 256 ]; then
 	stacksize=16384m
 else
