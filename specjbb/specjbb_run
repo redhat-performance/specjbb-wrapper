@@ -93,6 +93,9 @@ error_out()
 wcpus=`cat /proc/cpuinfo | grep processor | wc -l`
 wcpus=`echo "${wcpus}*2" | bc`
 
+# Gather hardware information
+${curdir}/test_tools/gather_data ${curdir}
+
 #
 # Setup the default warehouses and increments.
 #
@@ -358,6 +361,7 @@ run_specjbb()
 	rm results_${test_name}_${to_tuned_setting} 
 	cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
 	cp ${curdir}/meta_data.yml results_${test_name}_${to_tuned_setting}
+	${curdir}/test_tools/move_data $curdir ${RESULTSDIR}
 	mv ${test_name}.out  results_${test_name}_${to_tuned_setting}
 	echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
 
