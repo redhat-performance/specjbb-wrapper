@@ -129,7 +129,6 @@ process_specjbb_data()
 	for lvl2 in `ls -d $lvl1/results_specjbb*`; do
 		pushd $lvl2 > /tmp/null
 		csv_file=`pwd`/results_${test_name}.csv
-		echo $csv_file > /tmp/dave
 		for dir_work in `ls -d SPEC*`; do
 			pushd $dir_work > /dev/null
 			process_header $csv_file
@@ -353,31 +352,21 @@ run_specjbb()
 			execute_specjbb $specjbb_opts
 		fi
 	done
- 
-	timestamp=`date | sed "s/ /_/g"`
+
+#
+# We need to process the data 
+#
 	pushd /tmp > /dev/null
-	RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
+	RESULTSDIR=results_${test_name}_${to_tuned_setting}
 	mkdir ${RESULTSDIR}
 	rm results_${test_name}_${to_tuned_setting} 
 	cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
-	cp ${curdir}/meta_data.yml results_${test_name}_${to_tuned_setting}
-	$run_dir/test_tools/move_data $curdir ${RESULTSDIR}
 	mv ${test_name}.out  results_${test_name}_${to_tuned_setting}
 	echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
-
 	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 	process_specjbb_data
-	rm -f results_pbench.tar 
-	working_dir=`ls -rtd /tmp/results*${test_name}* | grep -v tar | tail -1`
-	find $working_dir  -type f | tar --transform 's/.*\///g' -cf results_pbench.tar --files-from=/dev/stdin
-	tar hcf results_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting}
-	popd > /dev/null
-
-	if [ -d "/var/lib/pbench-agent"  ]; then
-		cp /tmp/results_${test_name}_${to_tuned_setting}.tar /tmp/results_pbench_${test_name}_${to_tuned_setting}.tar
-		last=`ls -d /var/lib/pbench-agent/*specjbb_test* | tail -n 1`
-		cp -R /tmp/results_${test_name}_${to_tuned_setting}  ${last}/1-1
-	fi
+	echo ${curdir}/test_tools/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user >> /tmp/dave_specjbb
+	${curdir}/test_tools/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
 }
 
 #
