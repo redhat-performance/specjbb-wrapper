@@ -365,7 +365,6 @@ run_specjbb()
 	echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
 	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
 	process_specjbb_data
-	echo ${curdir}/test_tools/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user >> /tmp/dave_specjbb
 	${curdir}/test_tools/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
 }
 
@@ -395,10 +394,7 @@ run_pbench_pbench_specjbb()
 		#
 		process_specjbb_data
 		tar hcf results_pbench_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting}
-		popd > /dev/null
-		mkdir $specdir/results/wrapper_results
-		pushd $specdir/results/wrapper_results > /dev/null
-		tar xf /tmp/results_pbench_${test_name}_${to_tuned_setting}.tar
+		${curdir}/test_tools/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
 		popd > /dev/null
 	done
 	value=`$TOOLS_BIN/set_pbench_variables --host_config $to_configuration --sys_type $to_sys_type --test ${test_name} --pbench_user $to_puser --run_label $to_run_label`
