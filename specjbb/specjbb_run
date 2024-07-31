@@ -400,6 +400,7 @@ run_pbench_pbench_specjbb()
 		# Now handle the results file for the pbench run
 		#
 		process_specjbb_data
+		echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
 		tar hcf results_pbench_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting}
 		${curdir}/test_tools/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
 		popd > /dev/null
