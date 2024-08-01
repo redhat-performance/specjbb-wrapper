@@ -94,7 +94,7 @@ wcpus=`cat /proc/cpuinfo | grep processor | wc -l`
 wcpus=`echo "${wcpus}*2" | bc`
 
 # Gather hardware information
-$run_dir/test_tools/gather_data ${curdir}
+${curdir}/test_tools/gather_data ${curdir}
 
 #
 # Setup the default warehouses and increments.
