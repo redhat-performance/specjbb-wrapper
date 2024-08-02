@@ -125,7 +125,7 @@ process_specjbb_data()
 	#
 	# Locate the last created specjbb results
 	#
-	lvl1=`ls -td results_*specjbb*tuned* | grep -v tar | tail -1`
+	lvl1=`ls -td results_*specjbb* | grep -v tar | tail -1`
 	for lvl2 in `ls -d $lvl1/results_specjbb*`; do
 		pushd $lvl2 > /tmp/null
 		csv_file=`pwd`/results_${test_name}.csv
@@ -189,6 +189,9 @@ process_specjbb_data()
 		fi
 		popd > /dev/null
 	done
+	if [ -f ${total_data} ]; then
+		rm ${total_data}
+	fi
 }
 
 #
@@ -358,9 +361,13 @@ run_specjbb()
 #
 	pushd /tmp > /dev/null
 	RESULTSDIR=results_${test_name}_${to_tuned_setting}
+	#
+	# We do not want any old data.
+	#
+	if [[ -f ${RESULTSDIR} ]]; then
+		rm -rf ${RESULTSDIR}
+	fi
 	mkdir ${RESULTSDIR}
-	rm results_${test_name}_${to_tuned_setting} 
-	cp -R -s ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
 	mv ${test_name}.out  results_${test_name}_${to_tuned_setting}
 	echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
 	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
@@ -382,7 +389,7 @@ run_pbench_pbench_specjbb()
 		pushd /tmp > /dev/null
 		RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
 		mkdir ${RESULTSDIR}
-		rm results_${test_name}_${to_tuned_setting} 
+		rm -rf results_${test_name}_${to_tuned_setting} 
 		cp -R ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
 		timestamp=`date | sed "s/ /_/g"`
 		
@@ -393,6 +400,7 @@ run_pbench_pbench_specjbb()
 		# Now handle the results file for the pbench run
 		#
 		process_specjbb_data
+		echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
 		tar hcf results_pbench_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting}
 		${curdir}/test_tools/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
 		popd > /dev/null
@@ -607,7 +615,9 @@ popd > /dev/null
 pushd $run_dir > /dev/null
 cd ..
 tar xf /$to_home_root/$to_user/uploads/$specjbb_kit
-mkdir specjbb
+if [[ ! -d specjbb ]]; then
+	mkdir specjbb
+fi
 cd specjbb
 tar xf /$to_home_root/$to_user/uploads/$specjbb_kit
 cp -R SPECjbb2005/* .
