@@ -430,10 +430,13 @@ usage()
 	echo "Usage $1:"
 	echo "  --inc-warehouses: how many warehouses to increment each time, default"
 	echo "    else increment_warehouse=echo ${end_warehouse}/8."
-	echo "  --max_nodes: Runs one jvm per node."
+	echo "  --java_exec <java path>:  Path to the java to run.  Non pbench version only."
+	echo "  --max_jvms: Runs one jvm per node."
 	echo "  --node_pinning: If set to y, then will bind to the numa node, default is n."
 	echo "  --nr-jvms: number of jvms to use, default 1 and the # numa nodes."
 	echo "  --regression: regression runs, settings, measurement=120, total 8 warehouse data points."
+	echo "  --runtime <seconds>: Seconds to run the test for (pbench version only)."
+	echo "  --specjbb_kit <specjbb kit>:  Path to the specjbb kit to use."
 	echo "  --start-warehouses: Number of warehouses to start at, default 2, if cpus < 16 else value is calculated."
 	echo "  --stop-warehouse: Warehouses top stop at.  Default is ncpus."
 	echo "  --usage: this is usage message."
@@ -565,7 +568,7 @@ while [[ $# -gt 0 ]]; do
 			shift 1
 		;;
 		--runtime)
-			untime=$2
+			runtime=$2
 			shift 2
 		;;
 		--specjbb_kit)
