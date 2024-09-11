@@ -65,7 +65,6 @@ if [ $wcpus -gt 256 ]; then
 else
 	stacksize=8192m
 fi
-$java \
--Xms${stacksize} -Xmx${stacksize} $xss_value -XX:+UseParallelOldGC $aggressive -XX:+UseBiasedLocking -XX:+UseCompressedOops -XX:SurvivorRatio=24 spec.jbb.JBBmain -propfile $PROPS_FILE
+$java -Xms${stacksize} -Xmx${stacksize} spec.jbb.JBBmain -propfile $PROPS_FILE
 date
 exit $?
