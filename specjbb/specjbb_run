@@ -430,7 +430,7 @@ usage()
 	echo "Usage $1:"
 	echo "  --inc-warehouses: how many warehouses to increment each time, default"
 	echo "    else increment_warehouse=echo ${end_warehouse}/8."
-	echo "  --java_exec <java path>:  Path to the java to run.  Non pbench version only."
+	echo "  --java_exec <java path>:  Path to the java to run.  Non-pbench version only."
 	echo "  --max_jvms: Runs one jvm per node."
 	echo "  --node_pinning: If set to y, then will bind to the numa node, default is n."
 	echo "  --nr-jvms: number of jvms to use, default 1 and the # numa nodes."
