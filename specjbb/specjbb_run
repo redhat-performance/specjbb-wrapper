@@ -27,6 +27,7 @@
 rtc=0
 arguments="$@"
 test_name="specjbb"
+version="1.0"
 declare -a nodes
 nodes_count=0
 ramp_up=60
@@ -129,6 +130,9 @@ process_specjbb_data()
 	for lvl2 in `ls -d $lvl1/results_specjbb*`; do
 		pushd $lvl2 > /tmp/null
 		csv_file=`pwd`/results_${test_name}.csv
+		if [ ! -f $csv_file ]; then
+			$TOOLS_BIN/test_header_info --front_matter --results_file $csv_file --host $to_configuration --sys_type $to_sys_type --tuned $to_tuned_setting --results_version $version --test_name $test_name
+		fi
 		for dir_work in `ls -d SPEC*`; do
 			pushd $dir_work > /dev/null
 			process_header $csv_file
