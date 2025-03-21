@@ -28,15 +28,12 @@ rtc=0
 arguments="$@"
 test_name="specjbb"
 version="1.0"
-declare -a nodes
-nodes_count=0
 ramp_up=60
 runtime=120
 measurement=60
-node_pinning="n"
+node_pinning="no_pin"
 node_list="1,node"
 nr_jvms=0
-config="none"
 specjbb_opts="none"
 execname=$0
 regression=0
@@ -44,6 +41,7 @@ use_pbench_version=0
 specjbb_kit=""
 java_exec="/bin/java"
 test_status="Ran"
+RESULTSDIR=""
 
 tools_git=https://github.com/redhat-performance/test_tools-wrappers
 
@@ -54,7 +52,7 @@ if [ ! -f "/tmp/${test_name}.out" ]; then
 	rtc=$?
 	if [[ -f /tmp/${test_name}.out ]]; then
 		cat /tmp/${test_name}.out
-		rm /tmp/${test_name}.out
+		rm -f /tmp/${test_name}.out
 	fi
 	exit $?
 fi
@@ -81,6 +79,11 @@ else
 		run_dir=${curdir}/${run_dir}
 	fi
 fi
+
+#
+# Final results are saved in ~/export_results, in timestamp directories.
+#
+rm -rf $run_dir/results_specjbb_*
 
 error_out()
 {
@@ -110,92 +113,127 @@ else
 fi
 
 #
-# results_specjbb.csv header
-#
-process_header()
-{
-	echo "Warehouses:Bops" >> $1
-}
-
-#
 # Reduce the data.  We take the max for each warehouse
 #
 process_specjbb_data()
 {
 	total_data=$(mktemp /tmp/specjbb_data.XXXXXX)
+	pushd $run_dir > /dev/null
 	#
-	# Locate the last created specjbb results
+	# results_specjbb_jvms* is a formatted directory name.
+	#   Field separator is a '_'
+	#   Last field is the node pinning status.
+	#   Third field from the end is the number of jvms.
 	#
-	lvl1=`ls -td results_*specjbb* | grep -v tar | tail -1`
-	for lvl2 in `ls -d $lvl1/results_specjbb*`; do
-		pushd $lvl2 > /tmp/null
-		csv_file=`pwd`/results_${test_name}.csv
-		if [ ! -f $csv_file ]; then
-			$TOOLS_BIN/test_header_info --front_matter --results_file $csv_file --host $to_configuration --sys_type $to_sys_type --tuned $to_tuned_setting --results_version $version --test_name $test_name
+	for run in `ls -d results_specjbb_jvms*`; do
+		run=`echo $run | sed "s/://g"`
+		if [[ ! -d $run ]]; then
+			continue
 		fi
-		for dir_work in `ls -d SPEC*`; do
-			pushd $dir_work > /dev/null
-			process_header $csv_file
-	
-			for file_in in `ls *txt`; do
-				wh_found=0
-				cat $file_in | sed "s/[*]/ /g" > ${file_in}.out
-				while IFS= read -r data_in
-				do
-					#
-					# Keep reading until Warehouses is hit.  Then keep
-					# going until the new line is hit.
-					#
-					if [[ ${data_in} == *"Warehouses"* ]]; then
-						wh_found=1;
-						continue
-					fi
-					if [ $wh_found -eq 0 ]; then
-						continue
-					fi
-					cline=`echo $data_in | sed "s/^ //"`
-					if [[ $cline == "" ]]; then
-						break
-					fi
-					echo $cline | sed "s/ /:/g" >>  $total_data
-				done < "${file_in}.out"
-			done
-			sort -n $total_data > ${total_data}_sorted
+		pushd $run/SPECjbbSingleJVM > /dev/null
+		njvms=`echo $run | rev | cut -d_ -f3 | rev`
+		node_pin=`echo $run | rev | cut -d_ -f1 | rev`
+		[ -n "njvms" ] && [ "$njvms" -eq "$njvms" ] 2>/dev/null
+		if [[ $? -ne 0 ]]; then
+			popd > /dev/null
+			continue;
+		fi
+		csv_file=results_${test_name}.csv
+		rm -f $csv_file
+		rm -f $total_data
+		#
+		# Start with the test metadata header.
+		#
+ 		$TOOLS_BIN/test_header_info --front_matter --results_file $csv_file --host $to_configuration --sys_type $to_sys_type --tuned $to_tuned_setting --results_version $version --test_name $test_name
+		#
+		# Now the specific test meta data
+		#
+ 		$TOOLS_BIN/test_header_info --results_file $csv_file --meta_output "n_jvms: $njvms" --meta_output "numa node pin: $node_pin" 
+		for file_in in `ls *txt`; do
+			wh_found=0
+			cat $file_in | sed "s/[*]/ /g" > ${file_in}.out
 			#
-			# We now want the max for each warehouse count. It has been
-			# sorted, so all we do is pick up the warehouse change.
+			# jvm: The jvm number this data pertains to.  If node pinning is active
+			#      then this is also the memory node and cpu node we are pinned to.
 			#
-			start_diff=0
-			cur_wh=0
+			jvm=`echo $file_in | cut -d'.' -f2 | bc`
+			echo "Warehouses:JVM $jvm BOPS" >> $csv_file
 			while IFS= read -r data_in
 			do
-				wh_chk=`echo $data_in | cut -d: -f1`
-				if [ $start_diff -eq 0 ]; then
-					start_diff=1
-					cur_wh=$wh_chk
-					last_line=$data_in
+				#
+				# Keep reading until Warehouses is hit.  Then keep
+				# going until the new line is hit.
+				#
+				if [[ ${data_in} == *"Warehouses"* ]]; then
+					wh_found=1;
 					continue
 				fi
-				if [ $cur_wh != $wh_chk ]; then
-					echo $last_line >> $csv_file
-					cur_wh=$wh_chk
+				if [ $wh_found -eq 0 ]; then
+					continue
 				fi
-				last_line=$data_in
-			done < "${total_data}_sorted"
-			echo $last_line >> $csv_file
+				cline=`echo $data_in | sed "s/^ //"`
+				#
+				# End of data is indicated by an empty line.
+				#
+				if [[ $cline == "" ]]; then
+					break
+				fi
+				echo $cline | sed "s/ /:/g" >>  $total_data
+				echo $cline | sed "s/ /:/g" >> $csv_file
+			done < "${file_in}.out"
 			echo "" >> $csv_file
-			popd > /dev/null
-			rm ${total_data}*
 		done
+		#
+		#  Now lets sum up all the jvms.  We sort the $total_data file numerically.
+		#  This puts the file in ascending warehouse order.
+		#
+		sort -n $total_data > ${total_data}_sorted
+		start_diff=0
+		last_wh=0
+		sum=0
+
+		echo "Warehouses:Total BOPS" >>$csv_file
+		while IFS= read -r data_in
+		do
+			cur_chk=`echo $data_in | cut -d: -f1`
+			value=`echo $data_in | cut -d: -f2`
+			#
+			# If we are the first line being read.
+			#
+			if [ $start_diff -eq 0 ]; then
+				start_diff=1
+				last_wh=$cur_chk
+				sum=$value
+				last_line=$data_in
+				continue
+			fi
+			#
+			# If the prior wh does not match the current wh report the sum.
+			#
+			if [ $last_wh != $cur_chk ]; then
+				echo $last_wh:$sum>> $csv_file
+				sum=$value
+				last_wh=$cur_chk
+				continue;
+			fi
+			let "sum=$sum+$value"
+		done < "${total_data}_sorted"
+		#
+		# Do not forget the last line.
+		#
+		echo $last_wh:$sum >> $csv_file
 		lines=`wc -l $csv_file | cut -d' ' -f 1`
 		if [ $lines -lt 2 ]; then
 			test_status="Failed"
+			rtc=1
 		fi
 		popd > /dev/null
+		cp -R $run $RESULTSDIR
 	done
-	if [ -f ${total_data} ]; then
-		rm ${total_data}
-	fi
+	#
+	# Remove he temporary files.
+	#
+	rm -f $total_data ${total_data}_sorted
 }
 
 #
@@ -208,8 +246,7 @@ set_prop_file()
 	# ENDWH=<val>:STARTWH=<val> and so forth.
 	#
 	if [[ $1 != "none" ]]; then
-		config=`echo $1 | cut -d: -f 1`
-		config_list=`echo $1 | cut -d: -f 2-1000`
+		config_list=`echo $1 | cut -d: -f 2-`
 		work_with=`echo $config_list | sed "s/:/ /g"`
 		for i in $work_with; do
 			field=`echo $i | cut -d'=' -f 1`
@@ -252,79 +289,67 @@ set_prop_file()
 }
 
 #
-# Obtain node information
-#
-obtain_nodes()
-{
-	curdir=`pwd`
-	for i in ` ls -d /sys/devices/system/node/node*`; do
-		cd $i
-		cpu_list=""
-		seper=""
-		for j in `ls -d cpu* | grep -v map | grep -v list | sed "s/cpu//"`; do
-			cpu_list=${cpu_list}${seper}${j}
-			seper=','
-		done
-		nodes[$nodes_count]=$cpu_list
-		let "nodes_count=$nodes_count+1"
-	done
-
-	let "nodes_count=$nodes_count-1"
-	cd $curdir
-}
-
-#
-# Group the output files
-#
-concat_files()
-{
-	for njobs  in 0 `seq 1 1 $1`; do
-		cat /tmp/${test_name}_${to_tuned_setting}_job_${njobs}.out >> /tmp/${test_name}_${to_tuned_setting}.out
-		rm /tmp/${test_name}_${to_tuned_setting}_job_${njobs}.out
-	done
-}
-
-#
 # Execute specjbb.  Passed in is 
 #  syntax of $1
 #  ENDWH=<val>:STARTWH=<val> and so forth.
 #
 execute_specjbb()
 {
+	declare -a pids
+	pindex=0
 	set_prop_file $1
 
-	#
-	# Start up all the jvms.
-	#	
-	for jvms in 0 `seq 1 1  $nr_jvms`; do
-		if [[ $node_pinning == "y" ]]; then
-			echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh $java_exec
-			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
-			if [ $? -ne 0 ]; then
-				error_out "Warning: numactl failed" 1
+	np_status=""
+	for pinning in $node_pinning; do
+		jvm_index=0
+		#
+		# Start the required number of jvms
+		#
+		for jvms in 0 `seq 1 1  $nr_jvms`; do
+			#
+			# Actual jvms is $jvms+1
+			#
+			let "jvm_index=$jvms+1"
+			if [[ $pinning == "pin" ]]; then
+				#
+				# One JVM group per numa node.
+				#
+				echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh $java_exec
+				np_status="y"
+				numactl  --membind  $jvms --cpunodebind $jvms ./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvm_index}_of_$nr_jvms_np_y.out &
+				if [ $? -ne 0 ]; then
+					#
+					# Fatal error, bail out.
+					#
+					error_out "Error: numactl failed" 1
+				fi
+			else
+				np_status="n"
+				./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvm_index}_$nr_jvms.out &
 			fi
-		else
-			./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
+			#
+			# Save the pid for later waiting.
+			#
+			pids[${pindex}]=$!
+			let "pindex=$pindex+1"
+		done
+		#
+		# Wait for all the  jvms to finish.
+		#
+		for pid in ${pids[*]}; do
+			wait $pid
+			if [ $? -ne 0 ]; then
+				rtc=1
+			fi
+		done
+		if [ $rtc -ne 0 ]; then
+			error_out "Error: One or more specjbb jobs failed" 1
 		fi
 		#
-		# Save the pid for later waiting.
+		# At this point $jvm_index is the number of jvms we ran with.
 		#
-		pids[${pindex}]=$!
-		let "pindex=$pindex+1"
+		mv $run_dir/results_specjbb $run_dir/results_specjbb_jvms_${jvm_index}_np_${np_status}
 	done
-	#
-	# Wait for every one to finish.
-	#
-	for pid in ${pids[*]}; do
-		wait $pid
-		if [ $? -ne 0 ]; then
-			rtc=1
-		fi
-	done
-	if [ $rtc -ne 0 ]; then
-		echo "One or more specjbb jobs failed"
-	fi
-	concat_files $nr_jvms
 }
 
 #
@@ -332,8 +357,6 @@ execute_specjbb()
 #
 run_specjbb()
 {
-	declare -a pids
-	pindex=0
 
 	#
 	# Prepare things for execution.
@@ -363,20 +386,19 @@ run_specjbb()
 #
 # We need to process the data 
 #
-	pushd /tmp > /dev/null
-	RESULTSDIR=results_${test_name}_${to_tuned_setting}
+	RESULTSDIR=$run_dir/results_${test_name}_${to_tuned_setting}
 	#
 	# We do not want any old data.
 	#
-	if [[ -f ${RESULTSDIR} ]]; then
-		rm -rf ${RESULTSDIR}
-	fi
-	mkdir ${RESULTSDIR}
-	mv ${test_name}.out  results_${test_name}_${to_tuned_setting}
-	echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
-	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
+	rm -rf ${RESULTSDIR}
+	mkdir -p $RESULTSDIR
+	pushd $run_dir > /dev/null
 	process_specjbb_data
-	${curdir}/test_tools/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
+	#
+	# Save the results.
+	#
+	${curdir}/test_tools/save_results --curdir $curdir --home_root $to_home_root --copy_dir ${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
+	popd > /dev/null
 }
 
 #
@@ -392,7 +414,7 @@ run_pbench_pbench_specjbb()
 	for specdir in `ls -d /var/lib/pbench-agent/specjbb2005*`; do
 		pushd /tmp > /dev/null
 		RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
-		mkdir ${RESULTSDIR}
+		mkdir -p ${RESULTSDIR}
 		rm -rf results_${test_name}_${to_tuned_setting} 
 		cp -R ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
 		timestamp=`date | sed "s/ /_/g"`
@@ -436,7 +458,12 @@ usage()
 	echo "    else increment_warehouse=echo ${end_warehouse}/8."
 	echo "  --java_exec <java path>:  Path to the java to run.  Non-pbench version only."
 	echo "  --max_jvms: Runs one jvm per node."
-	echo "  --node_pinning: If set to y, then will bind to the numa node, default is n."
+	echo "  --node_pinning <request>: Tells to bind jvm to a node or not"
+	echo "    If we are binding, we will bind one set of jvms per node."
+	echo "    Request:"
+	echo "      pin: then will bind the jvm to a numa node."
+	echo "      no_pin: then will not pin the jvms"
+	echo "      pin,no_pin: Will do both nopinning and pinning of jvms"
 	echo "  --nr-jvms: number of jvms to use, default 1 and the # numa nodes."
 	echo "  --regression: regression runs, settings, measurement=120, total 8 warehouse data points."
 	echo "  --runtime <seconds>: Seconds to run the test for (pbench version only)."
@@ -475,8 +502,8 @@ done
 # Check to see if the test tools directory exists.  If it does, we do not need to
 # clone the repo.
 #
-if [ ! -d "test_tools" ]; then
-	git clone $tools_git test_tools
+if [ ! -d "${curdir}/test_tools" ]; then
+	git clone $tools_git ${curdir}/test_tools
 	if [ $? -ne 0 ]; then
 		error_out "pulling git $tools_git failed." 1
 	fi
@@ -501,7 +528,9 @@ fi
 # to_tuned_setting: tuned setting
 #
 
+pushd $curdir > /dev/null
 source test_tools/general_setup "$@"
+popd > /dev/null
 
 ARGUMENT_LIST=(
 	"inc-warehouses"
@@ -537,13 +566,8 @@ if [ $? -ne 0 ]; then
 	error_out "Failed: parsing arguments." 1
 fi
 
+numb_nodes=`$TOOLS_BIN/detect_numa`
 eval set --$opts
-#
-# Determine how many numa nodes we have.
-# We will run on each node.  If regression is designated we will
-# run on 1 node and the maximum number of nodes.
-#
-numb_nodes=$(ls -1d /sys/devices/system/node/node* | wc -l)
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -556,7 +580,7 @@ while [[ $# -gt 0 ]]; do
 			shift 1
 		;;
 		--node_pinning)
-			node_pinning=$2
+			node_pinning=`echo $2 | sed "s/,/ /g"`
 			shift 2
 		;;
 		--nr-jvms)
@@ -610,25 +634,26 @@ else
 	nodes=`echo ${node_list} | sed "s/,/ /g"`
 fi
 
-pushd /$to_home_root/$to_user/uploads > /dev/null
 if [[ ${specjbb_kit} == "" ]]; then
+	pushd /$to_home_root/$to_user/uploads > /dev/null
 	specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
 	if [[ $specjbb_kit == *"tar.gz" ]]; then
 		tar xf $specjbb_kit
 		specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`
 	fi
+	popd > /dev/null
 fi
-popd > /dev/null
-pushd $run_dir > /dev/null
-cd ..
-tar xf /$to_home_root/$to_user/uploads/$specjbb_kit
-if [[ ! -d specjbb ]]; then
-	mkdir specjbb
+
+if  [[ ! -d $run_dir/SPECjbb2005 ]]; then
+	pushd $run_dir > /dev/null
+	cd ..
+	tar xf /$to_home_root/$to_user/uploads/$specjbb_kit
+	mkdir -p specjbb
+	cd specjbb
+	tar xf /$to_home_root/$to_user/uploads/$specjbb_kit
+	cp -R SPECjbb2005/* .
+	popd > /dev/null
 fi
-cd specjbb
-tar xf /$to_home_root/$to_user/uploads/$specjbb_kit
-cp -R SPECjbb2005/* .
-popd > /dev/null
 
 if [ $regression -eq 1 ]; then
 	nodes="1 ${numb_nodes}"
@@ -650,13 +675,9 @@ for entry in $nodes; do
 	if [ $nr_jvms -gt $numb_nodes ]; then
 		echo Error: number of nodes requested, $nr_jvms is greater then the number nodes in the system $numb_nodes
 		echo skipping node $numb_nodes
+		rtc=1
 		continue
 	fi
-
-	if [[ $node_pinning == "y" ]]; then
-		obtain_nodes
-	fi
-
 
 	if [ $to_pbench -eq 1 ]; then
 		if [ $use_pbench_version -eq 1 ]; then
