@@ -56,15 +56,17 @@ else
 fi
 
 #
-# We need to increase the stack size when wcpus is over 256.  The smaller stack size
-# will cause specjbb to terminate early.  We do not want to make the larger stack
-# size as it will cause issues with the smaller cloud systems.
+# Note: Assumption here.  The more CPUs we have in the system the more memory we have
+#       in the system.
 #
-if [ $wcpus -gt 256 ]; then
-	stacksize=16384m
-else
-	stacksize=8192m
-fi
-$java -Xms${stacksize} -Xmx${stacksize} spec.jbb.JBBmain -propfile $PROPS_FILE
+# We need to increase the stack size every 256 cpus  The smaller stack size
+# will cause specjbb to terminate early.  We do not want to simply use a larger stack size
+# as it will cause issues with limited memory systems. 
+#
+
+base_stack=8192
+stacksize=`echo "(1+($wcpus/256))*${base_stack}" | bc`
+
+$java -Xms${stacksize}m -Xmx${stacksize}m spec.jbb.JBBmain -propfile $PROPS_FILE
 date
 exit $?
