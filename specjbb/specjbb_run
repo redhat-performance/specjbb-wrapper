@@ -400,18 +400,31 @@ execute_specjbb()
 		sleep 5
 	fi
 	#
+	# Note: Assumption here.  The more CPUs we have in the system the more memory we have
+	#       in the system.
+	#
+	# We need to increase the stack size every 256 cpus  The smaller stack size
+	# will cause specjbb to terminate early.  We do not want to simply use a larger stack size
+	# as it will cause issues with limited memory systems.
+	#
+	base_stack=8192
+	
+	let "act_jvms=$nr_jvms+1"
+	stack_size=`echo "(1+(($wcpus/256)/$act_jvms))*${base_stack}" | bc`
+
+	#
 	# Start up all the jvms.
 	#	
 	for jvms in 0 `seq 1 1  $nr_jvms`; do
 		let "pass_jvm=$jvms+1"
 		if [[ $node_pinning == "y" ]]; then
-			echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh $java_exec
-			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${pass_jvms}.out &
+			echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh --java_exec $java_exec --jvm_number $pass_jvm --stack_size $stack_size --total_jvms $act_jvms
+			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh --java_exec $java_exec --jvm_number $pass_jvm --stack_size $stack_size --total_jvms $act_jvms >> /tmp/${test_name}_${to_tuned_setting}_job_${pass_jvms}.out &
 			if [ $? -ne 0 ]; then
 				error_out "Warning: numactl failed" 1
 			fi
 		else
-			./run.sh $java_exec $pass_jvm  >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out  &
+			./run.sh --java_exec $java_exec --jvm_number $pass_jvm --stack_size $stack_size --total_jvms $act_jvms >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out  &
 		fi
 		#
 		# Save the pid for later waiting.

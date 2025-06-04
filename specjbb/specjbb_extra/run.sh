@@ -1,8 +1,65 @@
 #!/bin/bash
 
+java=""
+stack_size=""
+jvm_of=1
+total_jvms=1
+
+NOARG_OPTS=(
+)
+
+ARG_OPTS=(
+    "java_exec"
+    "jvm_number"
+    "stack_size"
+    "total_jvms"
+)
+
+opts=$(getopt \
+    --longoptions "$(printf "%s," "${NOARG_OPTS[@]}")" \
+    --longoptions "$(printf "%s:," "${ARG_OPTS[@]}")" \
+    --name "$(basename "$0")" \
+    --options "hc:" \
+    -- "$@"
+)
+
+if [ $? -ne 0 ]; then
+	echo No arguments
+        exit 1
+fi
+
+eval set --$opts
+while [[ $# -gt 0 ]]; do
+        case "$1" in
+		--java_exec)
+			java=$2
+			shift 2
+		;;
+		--jvm_number)
+			jvm_of=$2
+			shift 2
+		;;
+		--stack_size)
+			stack_size=$2
+			shift 2
+		;;
+		--total_jvms)
+			total_jvms=$@
+			shift 2
+		;;
+		--)
+			break
+                ;;
+                *)
+			echo Unknown option $1
+			exit 1
+		;;
+	esac
+done
+
 SCRIPTNAME=`basename $0`
-#exec > ${HOSTNAME%%\.*}.$SCRIPTNAME.out.`date +"%Y%m%d%H%M%S"`_jvm_${2}_of_${3} 2>&1
-exec > ${HOSTNAME%%\.*}.$SCRIPTNAME.out.${4}_jvm_${2}_of_${3} 2>&1
+#exec > ${HOSTNAME%%\.*}.$SCRIPTNAME.out.`date +"%Y%m%d%H%M%S"`_jvm_${jvm_of}_of_${total_jvms} 2>&1
+exec > ${HOSTNAME%%\.*}.$SCRIPTNAME.out.${total_jvms}_jvm_${jvm_of}_of_${total_jvms} 2>&1
 
 
 date
@@ -25,15 +82,12 @@ find /sys/kernel/mm   -type f -exec grep -H  '.' {} \;
 sysctl -a | sort
 ps -ef | grep -i numa
 
-wcpus=`cat /proc/cpuinfo | grep processor | wc -l`
-wcpus=`echo "${wcpus}*2" | bc`
 PROPS_FILE=prop.file
 
 echo $CLASSPATH
 CLASSPATH=./jbb.jar:./check.jar:$CLASSPATH
 echo $CLASSPATH
 export CLASSPATH
-java=$1
 
 $java -fullversion
 
@@ -55,18 +109,6 @@ else
 	 xss_value="-Xss330k"
 fi
 
-#
-# Note: Assumption here.  The more CPUs we have in the system the more memory we have
-#       in the system.
-#
-# We need to increase the stack size every 256 cpus  The smaller stack size
-# will cause specjbb to terminate early.  We do not want to simply use a larger stack size
-# as it will cause issues with limited memory systems. 
-#
-
-base_stack=8192
-stacksize=`echo "(1+($wcpus/256))*${base_stack}" | bc`
-
-$java -Xms${stacksize}m -Xmx${stacksize}m spec.jbb.JBBmain -propfile $PROPS_FILE
+$java -Xms${stack_size}m -Xmx${stack_size}m spec.jbb.JBBmain -propfile $PROPS_FILE
 date
 exit $?
