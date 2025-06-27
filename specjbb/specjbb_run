@@ -82,6 +82,11 @@ else
 	fi
 fi
 
+if  [[ -f $run_dir/results_specjbb ]]; then
+	timestamp=`date | sed "s/ /_/g"`
+	mv $run_dir/results_specjbb $run_dir/back_results_specjbb/$timestamp
+fi
+
 error_out()
 {
 	echo $1
@@ -187,9 +192,12 @@ process_specjbb_data()
 			popd > /dev/null
 			rm ${total_data}*
 		done
-		lines=`wc -l $csv_file | cut -d' ' -f 1`
-		if [ $lines -lt 2 ]; then
-			test_status="Failed"
+		$TOOLS_BIN/validate_line --results_file results_${test_name}.csv --base_results_file $run_dir/base_test_results/test1/verify
+		if [[ $? -eq 0 ]]; then
+				echo Ran >> $run_dir/test_results_report
+		else
+				echo Failed >> $run_dir/test_results_report
+				rtc=1
 		fi
 		popd > /dev/null
 	done
@@ -668,4 +676,9 @@ for entry in $nodes; do
 		run_specjbb
 	fi
 done
+if [[ $rtc -eq 0 ]]; then
+	echo Ran
+else
+	echo Failed to run
+fi
 exit $rtc
