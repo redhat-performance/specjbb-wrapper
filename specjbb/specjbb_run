@@ -414,18 +414,14 @@ execute_specjbb()
 
 	#
 	# Start up all the jvms.
-	#	
+	#
+	bind_cmd=""
 	for jvms in 0 `seq 1 1  $nr_jvms`; do
 		let "pass_jvm=$jvms+1"
 		if [[ $node_pinning == "y" ]]; then
-			echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh --java_exec $java_exec --jvm_number $pass_jvm --stack_size $stack_size --total_jvms $act_jvms
-			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh --java_exec $java_exec --jvm_number $pass_jvm --stack_size $stack_size --total_jvms $act_jvms >> /tmp/${test_name}_${to_tuned_setting}_job_${pass_jvms}.out &
-			if [ $? -ne 0 ]; then
-				error_out "Warning: numactl failed" 1
-			fi
-		else
-			./run.sh --java_exec $java_exec --jvm_number $pass_jvm --stack_size $stack_size --total_jvms $act_jvms >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out  &
+			bind_cmd="numactl  --membind  $jvms --cpunodebind $jvms"
 		fi
+		$bind_cmd ./run.sh --java_exec $java_exec --jvm_number $pass_jvm --stack_size $stack_size --total_jvms $act_jvms >> /tmp/${test_name}_${to_tuned_setting}_job_${pass_jvms}.out &
 		#
 		# Save the pid for later waiting.
 		#
@@ -532,7 +528,7 @@ run_pbench_pbench_specjbb()
 		process_specjbb_data
 		echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
 		tar hcf results_pbench_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting}
-		${curdir}/test_tools/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
+		$TOOLS_BIN/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
 		popd > /dev/null
 	done
 	value=`$TOOLS_BIN/set_pbench_variables --host_config $to_configuration --sys_type $to_sys_type --test ${test_name} --pbench_user $to_puser --run_label $to_run_label`
@@ -796,6 +792,6 @@ for entry in $nodes; do
 	fi
 done
 if [[ $rtc -eq 0 ]]; then
-	${curdir}/test_tools/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR_TOP} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
+	${TOOLS_BIN}/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR_TOP} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
 fi
 exit $rtc
