@@ -671,9 +671,4 @@ for entry in $nodes; do
 		run_specjbb
 	fi
 done
-if [[ $rtc -eq 0 ]]; then
-	echo Ran
-else
-	echo Failed to run
-fi
 exit $rtc
