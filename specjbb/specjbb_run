@@ -24,6 +24,7 @@
 #
 # Defined options
 #
+RESULTSDIR_TOP=""
 rtc=0
 arguments="$@"
 test_name="specjbb"
@@ -46,6 +47,22 @@ java_exec="/bin/java"
 test_status="Ran"
 
 tools_git=https://github.com/redhat-performance/test_tools-wrappers
+
+#
+# Archive any old runs.
+#
+ls /tmp/results*specjbb* &> /dev/null
+if [[ $? -eq 0 ]]; then
+	pushd /tmp > /dev/null
+
+	timestamp=`date | sed "s/ /_/g"`
+	arch_dir="specjbb_archive/${timestamp}"
+	mkdir -p $arch_dir
+	mv results*_specjbb* $arch_dir
+	mv specjbb*out $arch_dir
+	popd >& /dev/null
+fi
+
 
 if [ ! -f "/tmp/${test_name}.out" ]; then
 	command="${0} $@"
@@ -118,6 +135,51 @@ process_header()
 }
 
 #
+# For runs with multiple JVMs, we need to sum everything up.  Note,
+# this includes the WH count, as each JVM is running (Total WH)/# JVMs.
+#
+present_wh_results()
+{
+	last_wh=0
+	total_wh=0
+	total_bops=0
+	while IFS= read -r data_in
+	do
+		wh=`echo $data_in | cut -d':' -f 1`
+		val=`echo $data_in | cut -d':' -f 2`
+		#
+		# If first time through the loop, set the initial values.
+		#
+		if [ $last_wh -eq 0 ]; then
+			total_bops=$val
+			total_wh=$wh
+			last_wh=$wh
+			continue
+		fi
+		#
+		# We are on to the next WH count, report what we have summed up,
+		# and reset the values.
+		#
+		if [ $last_wh -ne $wh ]; then
+			echo $total_wh:$total_bops >> $2
+			total_bops=$val
+			total_wh=$wh
+			last_wh=$wh
+			continue
+		fi
+		#
+		# Warehouses is the same as the prior Warehouses, sum up the # Warehouses, and the total bops done.
+		#
+		let "total_wh=$total_wh+$wh"
+		let "total_bops=$total_bops+$val"
+	done < "$1"
+	#
+	# Do not forget the last Warehouse count.
+	#
+	echo $total_wh:$total_bops >> $2
+}
+
+#
 # Reduce the data.  We take the max for each warehouse
 #
 process_specjbb_data()
@@ -126,18 +188,49 @@ process_specjbb_data()
 	#
 	# Locate the last created specjbb results
 	#
-	lvl1=`ls -td results_*specjbb* | grep -v tar | tail -1`
+	rdir=`ls -td results_*specjbb* | grep -v tar | grep -v zip | tail -1`
+	pushd $rdir > /dev/null
+	#
+	# Look up based on the $node_jvms ran with.  We list by time, filter out tar and
+	# zip files.  The last item in the list will be the latest run.
+	#
+	lvl1=`ls -td results_*specjbb*${node_jvms}* | grep -v tar | grep -v zip | tail -1`
 	for lvl2 in `ls -d $lvl1/results_specjbb*`; do
 		pushd $lvl2 > /tmp/null
 		csv_file=`pwd`/results_${test_name}.csv
 		if [ ! -f $csv_file ]; then
 			$TOOLS_BIN/test_header_info --front_matter --results_file $csv_file --host $to_configuration --sys_type $to_sys_type --tuned $to_tuned_setting --results_version $version --test_name $test_name
+			#
+			# Add test meta for the total number of JVMs
+			#
+			$TOOLS_BIN/test_header_info --results_file $csv_file --meta_output "Number of jvms: $node_jvms"
 		fi
 		for dir_work in `ls -d SPEC*`; do
 			pushd $dir_work > /dev/null
-			process_header $csv_file
-	
-			for file_in in `ls *txt`; do
+			processed=0
+
+			rm -f $total_data*
+			#
+			# Verify we have a SPEC*txt file.
+			#
+			ls SPEC*txt &> /dev/null
+			if [[ $? -ne 0 ]]; then
+				popd > /dev/null
+				continue
+			fi
+
+			#
+			# Go through each results file and pull the warehouse results.
+			# Afterwards we will organize the data.
+			#
+			for file_in in `ls SPEC*txt`; do
+				#
+				# If first time through, we need to provide the header.
+				#
+				if [[ $processed -eq 0 ]]; then
+					process_header $csv_file
+					processed=1
+				fi
 				wh_found=0
 				cat $file_in | sed "s/[*]/ /g" > ${file_in}.out
 				while IFS= read -r data_in
@@ -160,32 +253,16 @@ process_specjbb_data()
 					echo $cline | sed "s/ /:/g" >>  $total_data
 				done < "${file_in}.out"
 			done
-			sort -n $total_data > ${total_data}_sorted
-			#
-			# We now want the max for each warehouse count. It has been
-			# sorted, so all we do is pick up the warehouse change.
-			#
-			start_diff=0
-			cur_wh=0
-			while IFS= read -r data_in
-			do
-				wh_chk=`echo $data_in | cut -d: -f1`
-				if [ $start_diff -eq 0 ]; then
-					start_diff=1
-					cur_wh=$wh_chk
-					last_line=$data_in
-					continue
-				fi
-				if [ $cur_wh != $wh_chk ]; then
-					echo $last_line >> $csv_file
-					cur_wh=$wh_chk
-				fi
-				last_line=$data_in
-			done < "${total_data}_sorted"
-			echo $last_line >> $csv_file
-			echo "" >> $csv_file
-			popd > /dev/null
-			rm ${total_data}*
+			if [[ -f $total_data ]]; then
+				#
+				# Sort the data by Warehouses.  Once done call present_wh_results
+				# to sum the run up.
+				#
+				sort -n $total_data > ${total_data}_sorted
+				present_wh_results ${total_data}_sorted $csv_file
+				rm ${total_data}*
+				popd > /dev/null
+			fi
 		done
 		lines=`wc -l $csv_file | cut -d' ' -f 1`
 		if [ $lines -lt 2 ]; then
@@ -193,9 +270,7 @@ process_specjbb_data()
 		fi
 		popd > /dev/null
 	done
-	if [ -f ${total_data} ]; then
-		rm ${total_data}
-	fi
+	popd  > /dev/null
 }
 
 #
@@ -203,6 +278,8 @@ process_specjbb_data()
 #
 set_prop_file()
 {
+	tmp_file1=$(mktemp /tmp/specjbb_temp.XXXXXX)
+	tmp_file2=$(mktemp /tmp/specjbb_temp.XXXXXX)
 	#
 	# syntax of $1
 	# ENDWH=<val>:STARTWH=<val> and so forth.
@@ -241,14 +318,26 @@ set_prop_file()
 		measurement=120
 		increment_by=`echo "${end_warehouse}/8" | bc`
 		increment_warehouse=$increment_by
-
 	fi
-	sed "s/input.ramp_up_seconds=30/input.ramp_up_seconds=${ramp_up}/g" $run_dir/SPECjbb.props > /tmp/temp
-	sed "s/input.measurement_seconds=240/input.measurement_seconds=${measurement}/g" /tmp/temp > /tmp/temp1
-	sed "s/#input.ending_number_warehouses=2/input.ending_number_warehouses=${end_warehouse}/g" /tmp/temp1 > /tmp/temp
-	sed "s/input.starting_number_warehouses=1/input.starting_number_warehouses=${start_warehouse}/g" /tmp/temp > /tmp/temp1
-	sed "s/input.output_directory=results/input.output_directory=results_specjbb/g" /tmp/temp1 > /tmp/temp
-	sed "s/input.increment_number_warehouses=1/input.increment_number_warehouses=${increment_warehouse}/g" /tmp/temp > $run_dir/prop.file
+	#
+	# Calculate ending warehouse, increment warehouses and starting warehouse
+	# based on the number of jvms doing.
+	#
+	ewh=`echo ${end_warehouse}/${node_jvms} | bc`
+	iwh=`echo ${increment_warehouse}/${node_jvms} | bc`
+	swh=`echo ${start_warehouse}/${node_jvms} | bc`
+	sed "s/input.ramp_up_seconds=30/input.ramp_up_seconds=${ramp_up}/g" $run_dir/SPECjbb.props > $tmp_file1
+	sed "s/input.measurement_seconds=240/input.measurement_seconds=${measurement}/g" $tmp_file1 > $tmp_file2
+	sed "s/#input.ending_number_warehouses=2/input.ending_number_warehouses=${ewh}/g" $tmp_file2 > $tmp_file1
+	sed "s/input.starting_number_warehouses=1/input.starting_number_warehouses=${swh}/g" $tmp_file1 > $tmp_file2
+	sed "s/input.output_directory=results/input.output_directory=results_specjbb/g" $tmp_file2 > $tmp_file1
+	if [[ $node_jvm -gt 1 ]]; then
+		sed "s/input.jvm_instances=1/input.jvm_instances=${node_jvms}/g" $tmp_file1 > $tmp_file2
+		sed "s/input.increment_number_warehouses=1/input.increment_number_warehouses=${iwh}/g" $tmp_file2 > $run_dir/prop.file
+	else
+		sed "s/input.increment_number_warehouses=1/input.increment_number_warehouses=${iwh}/g" $tmp_file1 > $run_dir/prop.file
+	fi
+	rm -f $tmp_file1 $tmp_file2
 }
 
 #
@@ -280,32 +369,59 @@ concat_files()
 {
 	for njobs  in 0 `seq 1 1 $1`; do
 		cat /tmp/${test_name}_${to_tuned_setting}_job_${njobs}.out >> /tmp/${test_name}_${to_tuned_setting}.out
-		rm /tmp/${test_name}_${to_tuned_setting}_job_${njobs}.out
+		cp /tmp/${test_name}_${to_tuned_setting}.out /tmp/${test_name}.out
 	done
 }
 
 #
-# Execute specjbb.  Passed in is 
+# Execute specjbb.  Passed in is
 #  syntax of $1
 #  ENDWH=<val>:STARTWH=<val> and so forth.
 #
 execute_specjbb()
 {
-	set_prop_file $1
+	prop_opts=$1
+	set_prop_file $prop_opts
+
+	# start the controller
+	if [[ $node_jvms -gt 1 ]]; then
+		specjbb2005_dir=${run_dir}/SPECjbb2005
+		specjbb_cp="${specjbb2005_dir}/jbb.jar:${specjbb2005_dir}/check.jar"
+		java_opts=
+		java -cp ${specjbb_cp} -Xms32m -Xmx32m ${java_opts} spec.jbb.Controller -propfile ${run_dir}/prop.file &
+		controller_pid=$!
+		if [ "x$controller_pid" = "x" ]; then
+			printf "\t${benchmark}: unable to start the java controller\n\n"
+			exit 1
+		fi
+		#
+		# Give it a chance to come up.
+		#
+		sleep 5
+	fi
+	#
+	# Note: Assumption here.  The more CPUs we have in the system the more memory we have
+	#       in the system.
+	#
+	# We need to increase the stack size every 256 cpus  The smaller stack size
+	# will cause specjbb to terminate early.  We do not want to simply use a larger stack size
+	# as it will cause issues with limited memory systems.
+	#
+	base_stack=8192
+	
+	let "act_jvms=$nr_jvms+1"
+	stack_size=`echo "(1+(($wcpus/256)/$act_jvms))*${base_stack}" | bc`
 
 	#
 	# Start up all the jvms.
-	#	
+	#
+	bind_cmd=""
 	for jvms in 0 `seq 1 1  $nr_jvms`; do
+		let "pass_jvm=$jvms+1"
 		if [[ $node_pinning == "y" ]]; then
-			echo numactl  --membind  $jvms --cpunodebind $jvms  ./run.sh $java_exec
-			numactl  --membind  $jvms --cpunodebind $jvms ./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
-			if [ $? -ne 0 ]; then
-				error_out "Warning: numactl failed" 1
-			fi
-		else
-			./run.sh $java_exec >> /tmp/${test_name}_${to_tuned_setting}_job_${jvms}.out &
+			bind_cmd="numactl  --membind  $jvms --cpunodebind $jvms"
 		fi
+		$bind_cmd ./run.sh --java_exec $java_exec --jvm_number $pass_jvm --stack_size $stack_size --total_jvms $act_jvms >> /tmp/${test_name}_${to_tuned_setting}_job_${pass_jvms}.out &
 		#
 		# Save the pid for later waiting.
 		#
@@ -321,6 +437,11 @@ execute_specjbb()
 			rtc=1
 		fi
 	done
+	if [[ $node_jvms -gt 1 ]]; then
+		kill $controller_pid > /dev/null 2>&1
+		wait $controller_pid
+	fi
+
 	if [ $rtc -ne 0 ]; then
 		echo "One or more specjbb jobs failed"
 	fi
@@ -361,22 +482,23 @@ run_specjbb()
 	done
 
 #
-# We need to process the data 
+# We need to process the data
 #
 	pushd /tmp > /dev/null
-	RESULTSDIR=results_${test_name}_${to_tuned_setting}
-	#
+	if [[ $RESULTSDIR_TOP == "" ]]; then
+		RESULTSDIR_TOP=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
+	fi
+	RESULTSDIR=${RESULTSDIR_TOP}/results_${test_name}_${to_tuned_setting}_${node_jvms}_results
 	# We do not want any old data.
 	#
-	if [[ -f ${RESULTSDIR} ]]; then
-		rm -rf ${RESULTSDIR}
+	mkdir -p ${RESULTSDIR}
+	if [[ -d results_${test_name}_${to_tuned_setting} ]]; then
+		mv results_${test_name}_${to_tuned_setting} ${RESULTSDIR}
 	fi
-	mkdir ${RESULTSDIR}
-	mv ${test_name}.out  results_${test_name}_${to_tuned_setting}
-	echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
-	mv $run_dir/results_specjbb  results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
+	echo $test_status > ${RESULTSDIR}/test_results_report
+	timestamp=`date | sed "s/ /_/g"`
+	mv $run_dir/results_specjbb  ${RESULTSDIR}/results_${test_name}_${timestamp}
 	process_specjbb_data
-	${curdir}/test_tools/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
 }
 
 #
@@ -393,8 +515,8 @@ run_pbench_pbench_specjbb()
 		pushd /tmp > /dev/null
 		RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
 		mkdir ${RESULTSDIR}
-		rm -rf results_${test_name}_${to_tuned_setting} 
-		cp -R ${RESULTSDIR} results_${test_name}_${to_tuned_setting} 
+		rm -rf results_${test_name}_${to_tuned_setting}
+		cp -R ${RESULTSDIR} results_${test_name}_${to_tuned_setting}
 		timestamp=`date | sed "s/ /_/g"`
 		
 		cp -R $specdir/results results_${test_name}_${to_tuned_setting}
@@ -406,7 +528,7 @@ run_pbench_pbench_specjbb()
 		process_specjbb_data
 		echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
 		tar hcf results_pbench_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting}
-		${curdir}/test_tools/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
+		$TOOLS_BIN/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
 		popd > /dev/null
 	done
 	value=`$TOOLS_BIN/set_pbench_variables --host_config $to_configuration --sys_type $to_sys_type --test ${test_name} --pbench_user $to_puser --run_label $to_run_label`
@@ -595,7 +717,7 @@ while [[ $# -gt 0 ]]; do
 			shift 1
 		;;
 		--)
-			break; 
+			break;
 		;;
 		*)
 			echo option not found $1
@@ -646,6 +768,7 @@ for entry in $nodes; do
 	else
 		nr_jvms=$entry
 	fi
+	node_jvms=$nr_jvms
 
 	if [ $nr_jvms -gt $numb_nodes ]; then
 		echo Error: number of nodes requested, $nr_jvms is greater then the number nodes in the system $numb_nodes
@@ -668,4 +791,7 @@ for entry in $nodes; do
 		run_specjbb
 	fi
 done
+if [[ $rtc -eq 0 ]]; then
+	${TOOLS_BIN}/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR_TOP} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
+fi
 exit $rtc
