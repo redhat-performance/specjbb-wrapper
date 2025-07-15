@@ -44,7 +44,7 @@ while [[ $# -gt 0 ]]; do
 			shift 2
 		;;
 		--total_jvms)
-			total_jvms=$@
+			total_jvms=$2
 			shift 2
 		;;
 		--)
