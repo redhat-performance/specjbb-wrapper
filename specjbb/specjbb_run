@@ -193,12 +193,7 @@ process_specjbb_data()
 			rm ${total_data}*
 		done
 		$TOOLS_BIN/validate_line --results_file results_${test_name}.csv --base_results_file $run_dir/base_test_results/test1/verify
-		if [[ $? -eq 0 ]]; then
-				echo Ran >> $run_dir/test_results_report
-		else
-				echo Failed >> $run_dir/test_results_report
-				rtc=1
-		fi
+		rtc=$?
 		popd > /dev/null
 	done
 	if [ -f ${total_data} ]; then
