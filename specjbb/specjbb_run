@@ -41,7 +41,6 @@ config="none"
 specjbb_opts="none"
 execname=$0
 regression=0
-use_pbench_version=0
 specjbb_kit=""
 java_exec="/bin/java"
 test_status="Ran"
@@ -501,73 +500,21 @@ run_specjbb()
 	process_specjbb_data
 }
 
-#
-# Run the test via pbench.
-#
-run_pbench_pbench_specjbb()
-{
-	cd /usr/local/share/
-	tar xvf  $to_home_root/$to_user/uploads/$specjbb_kit
-	ln -s SPECjbb2005 specjbb2005
-	pbench-specjbb2005 --heap-size=8192m --nr-jvms=$nr_jvms --start-warehouses=$start_warehouse --inc-warehouse=$increment_warehouse --runtime=$runtime --stop-warehouses=$end_warehouse
-	results_prefix=$to_puser"_instance_"$to_configuration
-	for specdir in `ls -d /var/lib/pbench-agent/specjbb2005*`; do
-		pushd /tmp > /dev/null
-		RESULTSDIR=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
-		mkdir ${RESULTSDIR}
-		rm -rf results_${test_name}_${to_tuned_setting}
-		cp -R ${RESULTSDIR} results_${test_name}_${to_tuned_setting}
-		timestamp=`date | sed "s/ /_/g"`
-		
-		cp -R $specdir/results results_${test_name}_${to_tuned_setting}
-		mv results_${test_name}_${to_tuned_setting}/results results_${test_name}_${to_tuned_setting}/results_${test_name}_${timestamp}
-
-		#
-		# Now handle the results file for the pbench run
-		#
-		process_specjbb_data
-		echo $test_status > results_${test_name}_${to_tuned_setting}/test_results_report
-		tar hcf results_pbench_${test_name}_${to_tuned_setting}.tar results_${test_name}_${to_tuned_setting}
-		$TOOLS_BIN/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
-		popd > /dev/null
-	done
-	value=`$TOOLS_BIN/set_pbench_variables --host_config $to_configuration --sys_type $to_sys_type --test ${test_name} --pbench_user $to_puser --run_label $to_run_label`
-	hostname=`echo $value | cut -d: -f 1| sed "s/${to_puser}_//g"`
-
-	export hostname
-	results_prefix=`echo $value | cut -d: -f 2`
-
-	echo $TOOLS_BIN/pbench_copy_data --hostname "${to_puser}_${to_run_label}" --user "${to_puser}" --prefix ${results_prefix}
-	$TOOLS_BIN/pbench_copy_data --hostname "${to_puser}_${to_run_label}" --user "${to_puser}" --prefix ${results_prefix}
-}
-
-#
-# Run specjbb via execute_pbench
-#
-run_specjbb_via_pbench()
-{
-	cd ${curdir}
-	$TOOLS_BIN/execute_via_pbench --cmd_executing "$0" $arguments --test $test_name --spacing 11 --pbench_stats $to_pstats
-	rtc=$?
-}
-
 usage()
 {
 	echo "Usage $1:"
 	echo "  --inc-warehouses: how many warehouses to increment each time, default"
 	echo "    else increment_warehouse=echo ${end_warehouse}/8."
-	echo "  --java_exec <java path>:  Path to the java to run.  Non-pbench version only."
+	echo "  --java_exec <java path>:  Path to the java to run."
 	echo "  --max_jvms: Runs one jvm per node."
 	echo "  --node_pinning: If set to y, then will bind to the numa node, default is n."
 	echo "  --nr-jvms: number of jvms to use, default 1 and the # numa nodes."
 	echo "  --regression: regression runs, settings, measurement=120, total 8 warehouse data points."
-	echo "  --runtime <seconds>: Seconds to run the test for (pbench version only)."
+	echo "  --runtime <seconds>: Seconds to run the test for."
 	echo "  --specjbb_kit <specjbb kit>:  Path to the specjbb kit to use."
 	echo "  --start-warehouses: Number of warehouses to start at, default 2, if cpus < 16 else value is calculated."
 	echo "  --stop-warehouse: Warehouses top stop at.  Default is ncpus."
 	echo "  --usage: this is usage message."
-	echo "  --use_pbench_version: Instead of running the wrappers version."
-	echo "    of specjbb, use pbench-specjbb when pbench is requested."
 	source test_tools/general_setup --usage
 }
 
@@ -614,8 +561,6 @@ fi
 # to_home_root: home directory
 # to_configuration: configuration information
 # to_times_to_run: number of times to run the test
-# to_pbench: Run the test via pbench
-# to_puser: User running pbench
 # to_run_label: Label for the run
 # to_user: User on the test system running the test
 # to_sys_type: for results info, basically aws, azure or local
@@ -640,7 +585,6 @@ ARGUMENT_LIST=(
 
 NO_ARGUMENTS=(
 	"regression"
-	"use_pbench_version"
 )
 
 # read arguments
@@ -712,10 +656,6 @@ while [[ $# -gt 0 ]]; do
 		-h)
 			usage $0
 		;;
-		--use_pbench_version)
-			use_pbench_version=1
-			shift 1
-		;;
 		--)
 			break;
 		;;
@@ -781,15 +721,7 @@ for entry in $nodes; do
 	fi
 
 
-	if [ $to_pbench -eq 1 ]; then
-		if [ $use_pbench_version -eq 1 ]; then
-			run_pbench_pbench_specjbb
-		else
-			run_specjbb_via_pbench
-		fi
-	else
-		run_specjbb
-	fi
+	run_specjbb
 done
 if [[ $rtc -eq 0 ]]; then
 	${TOOLS_BIN}/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR_TOP} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
