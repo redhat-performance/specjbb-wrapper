@@ -417,6 +417,9 @@ execute_specjbb()
 	# Start up all the jvms.
 	#
 	bind_cmd=""
+	if [[ $to_use_pcp -eq 1 ]]; then
+		start_pcp_subset
+	fi
 	for jvms in 0 `seq 1 1  $nr_jvms`; do
 		let "pass_jvm=$jvms+1"
 		if [[ $node_pinning == "y" ]]; then
@@ -438,11 +441,18 @@ execute_specjbb()
 			rtc=1
 		fi
 	done
+
+	if [[ $to_use_pcp -eq 1 ]]; then
+		echo "Send result to PCP archive"
+		out="${test_to_run}_pcp"
+		result2pcp $nr_jvms  ${out}
+		stop_pcp_subset
+	fi
+
 	if [[ $node_jvms -gt 1 ]]; then
 		kill $controller_pid > /dev/null 2>&1
 		wait $controller_pid
 	fi
-
 	if [ $rtc -ne 0 ]; then
 		echo "One or more specjbb jobs failed"
 	fi
@@ -701,6 +711,15 @@ fi
 #
 # Iterate over the nodes
 #
+if [[ $to_use_pcp -eq 1 ]]; then
+	source $TOOLS_BIN/pcp/pcp_commands.inc
+	setup_pcp
+	pcp_cfg=$TOOLS_BIN/pcp/default.cfg
+	pdir=/tmp/pcp_`date "+%Y.%m.%d-%H.%M.%S"`
+	echo "Start PCP"
+	start_pcp ${pdir}/ specjbb $pcp_cfg
+fi
+
 for entry in $nodes; do
 	#
 	# Node determination
@@ -725,6 +744,11 @@ for entry in $nodes; do
 
 	run_specjbb
 done
+if [[ $to_use_pcp -eq 1 ]]; then
+	stop_pcp
+	shutdown_pcp
+	cp -R $pdir /tmp/${RESULTSDIR_TOP}
+fi
 if [[ $rtc -eq 0 ]]; then
 	${TOOLS_BIN}/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR_TOP} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
 fi
