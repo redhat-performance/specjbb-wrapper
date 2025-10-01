@@ -367,8 +367,10 @@ obtain_nodes()
 concat_files()
 {
 	for njobs  in 0 `seq 1 1 $1`; do
-		cat /tmp/${test_name}_${to_tuned_setting}_job_${njobs}.out >> /tmp/${test_name}_${to_tuned_setting}.out
-		cp /tmp/${test_name}_${to_tuned_setting}.out /tmp/${test_name}.out
+		if [[ -f /tmp/${test_name}_${to_tuned_setting}_job_${njobs}.out ]]; then
+			cat /tmp/${test_name}_${to_tuned_setting}_job_${njobs}.out >> /tmp/${test_name}_${to_tuned_setting}.out
+			cp /tmp/${test_name}_${to_tuned_setting}.out /tmp/${test_name}.out
+		fi
 	done
 }
 
