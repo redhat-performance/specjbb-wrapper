@@ -445,7 +445,7 @@ execute_specjbb()
 	if [[ $to_use_pcp -eq 1 ]]; then
 		echo "Send result to PCP archive"
 		out="${test_to_run}_pcp"
-		result2pcp $nr_jvms  ${out}
+		result2pcp nr_jvms_${nr_jvms}  ${out}
 		stop_pcp_subset
 	fi
 
