@@ -1,0 +1,18 @@
+{
+    "dependencies": {
+        "amzn": [
+            "java-21-amazon-corretto"
+        ],
+        "rhel": [
+            "java-21-openjdk-headless"
+        ],
+        "sles": [
+            "java-21-openjdk"
+        ],
+        "ubuntu": [
+	    "openjdk-21-jre-headless"
+        ],
+        "pip": [
+        ]
+    }
+}

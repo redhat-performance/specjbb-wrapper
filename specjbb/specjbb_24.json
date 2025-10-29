@@ -1,0 +1,9 @@
+{
+    "dependencies": {
+        "amzn": [
+            "java-24-amazon-corretto"
+        ],
+        "pip": [
+        ]
+    }
+}
