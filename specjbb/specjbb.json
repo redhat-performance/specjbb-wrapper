@@ -23,6 +23,7 @@
         ],
         "ubuntu": [
             "bc",
+            "git",
             "zip",
             "unzip",
             "numactl",
