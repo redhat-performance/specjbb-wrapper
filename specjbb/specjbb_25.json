@@ -1,7 +1,7 @@
 {
     "dependencies": {
         "ubuntu": [
-	    "openjdk-25-jre-headless"
+            "openjdk-25-jre-headless"
         ],
         "pip": [
         ]

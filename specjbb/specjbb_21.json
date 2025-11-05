@@ -10,7 +10,7 @@
             "java-21-openjdk"
         ],
         "ubuntu": [
-	    "openjdk-21-jre-headless"
+            "openjdk-21-jre-headless"
         ],
         "pip": [
         ]

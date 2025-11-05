@@ -579,7 +579,6 @@ ARGUMENT_LIST=(
 	"node_pinning"
 	"java_exec"
 	"runtime"
-	"runtime"
 	"specjbb_kit"
 	"start-warehouses"
 	"stop-warehouses"
@@ -673,18 +672,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ! -f ${run_dir}/specjbb.json ]]; then
-	error_out "Package definition file ${run_dir}/specjbb_${java_version}.json  is missing.  Is the package file for $java_version defined?" 1
+	error_out "Package definition file ${run_dir}/specjbb.json  is missing."
 fi
 ${TOOLS_BIN}/package_tool --wrapper_config ${run_dir}/specjbb.json --no_packages $to_no_pkg_install
 if [[ $? -ne 0 ]]; then
-	error_out "Packaging install failed." 1
+	error_out "Package installation of ${run_dir}/specjbb.json  using ${TOOLS_BIN}/package_tool was unsuccessful."
 fi
 if [[ ! -f ${run_dir}/specjbb_${java_version}.json ]]; then
 	error_out "Package definition file ${run_dir}/specjbb_${java_version}.json  is missing.  Is the package file for $java_version defined?" 1
 fi
 ${TOOLS_BIN}/package_tool --wrapper_config ${run_dir}/specjbb_${java_version}.json --no_packages $to_no_pkg_install
 if [[ $? -ne 0 ]]; then
-	error_out "Packaging install of java failed." 1
+	error_out "Package installation of ${run_dir}/specjbb_${java_version}.json  using ${TOOLS_BIN}/package_tool was unsuccessful."
 fi
 
 #
