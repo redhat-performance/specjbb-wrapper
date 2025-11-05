@@ -688,7 +688,7 @@ fi
 
 #
 # Ubuntu is different on where it places the java.
-# The version isnot linked out of alternative, just the default, and
+# The version is not linked out of alternative, just the default, and
 # it uses the name of arch.
 #
 os=`${TOOLS_BIN}/detect_os`
