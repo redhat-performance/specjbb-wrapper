@@ -24,6 +24,7 @@
 #
 # Defined options
 #
+java_version=21
 RESULTSDIR_TOP=""
 rtc=0
 arguments="$@"
@@ -44,6 +45,8 @@ regression=0
 specjbb_kit=""
 java_exec="/bin/java"
 test_status="Ran"
+start_warehouse=0
+increment_warehouse=0
 
 tools_git=https://github.com/redhat-performance/test_tools-wrappers
 
@@ -103,27 +106,6 @@ error_out()
 	echo $1
 	exit $2
 }
-
-#
-# How many cpus in the system
-#
-wcpus=`cat /proc/cpuinfo | grep processor | wc -l`
-wcpus=`echo "${wcpus}*2" | bc`
-
-# Gather hardware information
-${curdir}/test_tools/gather_data ${curdir}
-
-#
-# Setup the default warehouses and increments.
-#
-end_warehouse=$wcpus
-if [ $wcpus -gt 16 ]; then
-	increment_warehouse=`echo "${end_warehouse}/8" | bc`
-	start_warehouse=`echo "(${end_warehouse}-(${increment_warehouse}*8))+${increment_warehouse}" | bc`
-else
-	start_warehouse=2
-	increment_warehouse=2
-fi
 
 #
 # results_specjbb.csv header
@@ -518,6 +500,7 @@ usage()
 	echo "  --inc-warehouses: how many warehouses to increment each time, default"
 	echo "    else increment_warehouse=echo ${end_warehouse}/8."
 	echo "  --java_exec <java path>:  Path to the java to run."
+	echo "  --java_version <number>: Version of java want to run, ie 21"
 	echo "  --max_jvms: Runs one jvm per node."
 	echo "  --node_pinning: If set to y, then will bind to the numa node, default is n."
 	echo "  --nr-jvms: number of jvms to use, default 1 and the # numa nodes."
@@ -567,6 +550,12 @@ if [ $show_usage -eq 1 ]; then
 	usage $0
 fi
 
+source test_tools/general_setup "$@"
+# Gather hardware information
+${TOOLS_BIN}/gather_data ${curdir}
+
+
+#
 # Variables set by general setup.
 #
 # TOOLS_BIN: points to the tool directory
@@ -580,11 +569,11 @@ fi
 # to_tuned_setting: tuned setting
 #
 
-source test_tools/general_setup "$@"
 
 ARGUMENT_LIST=(
 	"inc-warehouses"
 	"iterations"
+	"java_version"
 	"max_jvms"
 	"nr-jvms"
 	"node_pinning"
@@ -627,6 +616,10 @@ while [[ $# -gt 0 ]]; do
 	case "$1" in
 		--inc-warehouses)
 			increment_warehouse=$2
+			shift 2
+		;;
+		--java_version)
+			java_version=$2
 			shift 2
 		;;
 		--max_jvms)
@@ -678,12 +671,57 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
+if [[ ! -f ${run_dir}/specjbb.json ]]; then
+	error_out "Package definition file ${run_dir}/specjbb.json  is missing."
+fi
+${TOOLS_BIN}/package_tool --wrapper_config ${run_dir}/specjbb.json --no_packages $to_no_pkg_install
+if [[ $? -ne 0 ]]; then
+	error_out "Package installation of ${run_dir}/specjbb.json  using ${TOOLS_BIN}/package_tool was unsuccessful."
+fi
+if [[ ! -f ${run_dir}/specjbb_${java_version}.json ]]; then
+	error_out "Package definition file ${run_dir}/specjbb_${java_version}.json  is missing.  Is the package file for $java_version defined?" 1
+fi
+${TOOLS_BIN}/package_tool --wrapper_config ${run_dir}/specjbb_${java_version}.json --no_packages $to_no_pkg_install
+if [[ $? -ne 0 ]]; then
+	error_out "Package installation of ${run_dir}/specjbb_${java_version}.json  using ${TOOLS_BIN}/package_tool was unsuccessful."
+fi
+
+#
+# Ubuntu is different on where it places the java.
+# The version is not linked out of alternative, just the default, and
+# it uses the name of arch.
+#
+os=`${TOOLS_BIN}/detect_os`
+if [[ $os == "ubuntu" ]]; then
+	java_exec="/usr/lib/jvm/java-${java_version}-openjdk-*/bin/java"
+else
+	java_exec="/etc/alternatives/jre_"${java_version}"/bin/java"
+fi
+#
+# How many cpus in the system
+#
+wcpus=`cat /proc/cpuinfo | grep processor | wc -l`
+wcpus=`echo "${wcpus}*2" | bc`
+
+#
+# Setup the default warehouses and increments.
+#
+end_warehouse=$wcpus
+if [[ $start_warehouse -eq 0 ]]; then
+	if [ $wcpus -gt 16 ]; then
+		increment_warehouse=`echo "${end_warehouse}/8" | bc`
+		start_warehouse=`echo "(${end_warehouse}-(${increment_warehouse}*8))+${increment_warehouse}" | bc`
+	else
+		start_warehouse=2
+		increment_warehouse=2
+	fi
+fi
+
 if [ $numb_nodes -eq 1 ]; then
 	nodes="1"
 else
 	nodes=`echo ${node_list} | sed "s/,/ /g"`
 fi
-
 pushd /$to_home_root/$to_user/uploads > /dev/null
 if [[ ${specjbb_kit} == "" ]]; then
 	specjbb_kit=`ls -rt SPECjbb2005_kit* | tail -1`

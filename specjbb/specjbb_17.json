@@ -1,0 +1,15 @@
+{
+    "dependencies": {
+        "amzn": [
+            "java-17-amazon-corretto"
+        ],
+        "sles": [
+            "java-17-openjdk"
+        ],
+        "ubuntu": [
+            "openjdk-17-jre-headless"
+        ],
+        "pip": [
+        ]
+    }
+}

@@ -1,0 +1,15 @@
+{
+    "dependencies": {
+        "amzn": [
+            "java-11-amazon-corretto"
+        ],
+        "sles": [
+            "java-11-openjdk"
+        ],
+        "ubuntu": [
+            "openjdk-11-jre-headless"
+        ],
+        "pip": [
+        ]
+    }
+}
