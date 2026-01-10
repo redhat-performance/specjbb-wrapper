@@ -47,6 +47,7 @@ java_exec="/bin/java"
 test_status="Ran"
 start_warehouse=0
 increment_warehouse=0
+pdir=""
 
 tools_git=https://github.com/redhat-performance/test_tools-wrappers
 
@@ -142,6 +143,15 @@ present_wh_results()
 		# and reset the values.
 		#
 		if [ $last_wh -ne $wh ]; then
+			if [[ $to_use_pcp -eq 1 ]]; then
+				result2pcp Warehouse ${total_wh}
+				result2pcp BOPs ${total_bops}
+				#
+				# To prevent WH confusion, reset. Do not reset iterations
+				#
+				result2pcp Warehouse 0
+				result2pcp BOPs 0
+			fi
 			echo $total_wh:$total_bops >> $2
 			total_bops=$val
 			total_wh=$wh
@@ -158,6 +168,15 @@ present_wh_results()
 	# Do not forget the last Warehouse count.
 	#
 	echo $total_wh:$total_bops >> $2
+	if [[ $to_use_pcp -eq 1 ]]; then
+		result2pcp Warehouse ${total_wh}
+		result2pcp BOPs ${total_bops}
+		#
+		# To prevent WH confusion, reset. Do not reset iterations
+		#
+		result2pcp Warehouse 0
+		result2pcp BOPs 0
+	fi
 }
 
 #
@@ -424,13 +443,6 @@ execute_specjbb()
 		fi
 	done
 
-	if [[ $to_use_pcp -eq 1 ]]; then
-		echo "Send result to PCP archive"
-		out="${test_to_run}_pcp"
-		result2pcp nr_jvms_${nr_jvms}  ${out}
-		stop_pcp_subset
-	fi
-
 	if [[ $node_jvms -gt 1 ]]; then
 		kill $controller_pid > /dev/null 2>&1
 		wait $controller_pid
@@ -459,11 +471,32 @@ run_specjbb()
 	# Prepare things for execution.
 	#
 	file=`/$to_home_root/$to_user/tools_bin/get_params_file -d /$to_home_root/$to_user -c ${to_sysname} -t ${test_name}`
-
 	# Arrays are 0 based
 	let nr_jvms="$nr_jvms-1"
+
+	if [[ $to_use_pcp -eq 1 ]]; then
+		source $TOOLS_BIN/pcp/pcp_commands.inc
+		setup_pcp
+		pcp_cfg=$TOOLS_BIN/pcp/default.cfg
+		#
+		# Set the pcp file and include the number of jvm nodes doing.
+		#
+		pcp_out=specjbb_jvms_${node_jvms}
+		#
+		# Only set this once.  We want all the pcp files in one directory.
+		#
+		if [[ $pdir == "" ]]; then
+			pdir=/tmp/pcp_`date "+%Y.%m.%d-%H.%M.%S"`
+		fi
+		start_pcp ${pdir}/ $pcp_out $pcp_cfg
+	fi
+
 	for iterations  in 1 `seq 2 1 $to_times_to_run`; do
 		pindex=0
+		if [[ $pcp -eq 1 ]]; then
+			start_pcp_subset
+		fi
+
 		if test -f "$file"; then
 			while IFS= read -r specjbb_opts
 			do
@@ -472,26 +505,33 @@ run_specjbb()
 		else
 			execute_specjbb $specjbb_opts
 		fi
-	done
 
-#
-# We need to process the data
-#
-	pushd /tmp > /dev/null
-	if [[ $RESULTSDIR_TOP == "" ]]; then
-		RESULTSDIR_TOP=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
+		#
+		# We need to process the data
+		#
+		pushd /tmp > /dev/null
+		if [[ $RESULTSDIR_TOP == "" ]]; then
+			RESULTSDIR_TOP=results_${test_name}_${tuned_setting}_$(date "+%Y.%m.%d-%H.%M.%S")
+		fi
+		RESULTSDIR=${RESULTSDIR_TOP}/results_${test_name}_${to_tuned_setting}_${node_jvms}_results
+		# We do not want any old data.
+		#
+		mkdir -p ${RESULTSDIR}
+		if [[ -d results_${test_name}_${to_tuned_setting} ]]; then
+			mv results_${test_name}_${to_tuned_setting} ${RESULTSDIR}
+		fi
+		echo $test_status > ${RESULTSDIR}/test_results_report
+		timestamp=`date | sed "s/ /_/g"`
+		mv $run_dir/results_specjbb  ${RESULTSDIR}/results_${test_name}_${timestamp}
+		process_specjbb_data
+		if [[ $pcp -eq 1 ]]; then
+			stop_pcp_subset
+		fi
+	done
+	if [[ $pcp -eq 1 ]]; then
+		stop_pcp
+		shutdown_pcp
 	fi
-	RESULTSDIR=${RESULTSDIR_TOP}/results_${test_name}_${to_tuned_setting}_${node_jvms}_results
-	# We do not want any old data.
-	#
-	mkdir -p ${RESULTSDIR}
-	if [[ -d results_${test_name}_${to_tuned_setting} ]]; then
-		mv results_${test_name}_${to_tuned_setting} ${RESULTSDIR}
-	fi
-	echo $test_status > ${RESULTSDIR}/test_results_report
-	timestamp=`date | sed "s/ /_/g"`
-	mv $run_dir/results_specjbb  ${RESULTSDIR}/results_${test_name}_${timestamp}
-	process_specjbb_data
 }
 
 usage()
@@ -749,14 +789,6 @@ fi
 #
 # Iterate over the nodes
 #
-if [[ $to_use_pcp -eq 1 ]]; then
-	source $TOOLS_BIN/pcp/pcp_commands.inc
-	setup_pcp
-	pcp_cfg=$TOOLS_BIN/pcp/default.cfg
-	pdir=/tmp/pcp_`date "+%Y.%m.%d-%H.%M.%S"`
-	echo "Start PCP"
-	start_pcp ${pdir}/ specjbb $pcp_cfg
-fi
 
 for entry in $nodes; do
 	#
