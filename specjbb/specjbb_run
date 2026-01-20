@@ -477,26 +477,10 @@ run_specjbb()
 	# Arrays are 0 based
 	let nr_jvms="$nr_jvms-1"
 
-	if [[ $to_use_pcp -eq 1 ]]; then
-		source $TOOLS_BIN/pcp/pcp_commands.inc
-		setup_pcp
-		pcp_cfg=$TOOLS_BIN/pcp/default.cfg
-		#
-		# Set the pcp file and include the number of jvm nodes doing.
-		#
-		pcp_out=specjbb_jvms_${node_jvms}
-		#
-		# Only set this once.  We want all the pcp files in one directory.
-		#
-		if [[ $pdir == "" ]]; then
-			pdir=/tmp/pcp_`date "+%Y.%m.%d-%H.%M.%S"`
-		fi
-		start_pcp ${pdir}/ $pcp_out $pcp_cfg
-	fi
 
 	for iterations  in 1 `seq 2 1 $to_times_to_run`; do
 		pindex=0
-		if [[ $pcp -eq 1 ]]; then
+		if [[ $to_use_pcp -eq 1 ]]; then
 			start_pcp_subset
 		fi
 
@@ -527,14 +511,10 @@ run_specjbb()
 		timestamp=`date | sed "s/ /_/g"`
 		mv $run_dir/results_specjbb  ${RESULTSDIR}/results_${test_name}_${timestamp}
 		process_specjbb_data
-		if [[ $pcp -eq 1 ]]; then
+		if [[ $to_use_pcp -eq 1 ]]; then
 			stop_pcp_subset
 		fi
 	done
-	if [[ $pcp -eq 1 ]]; then
-		stop_pcp
-		shutdown_pcp
-	fi
 }
 
 usage()
@@ -792,6 +772,22 @@ fi
 #
 # Iterate over the nodes
 #
+if [[ $to_use_pcp -eq 1 ]]; then
+	source $TOOLS_BIN/pcp/pcp_commands.inc
+	setup_pcp
+	pcp_cfg=$TOOLS_BIN/pcp/default.cfg
+	#
+	# Set the pcp file and include the number of jvm nodes doing.
+	#
+	pcp_out=specjbb_jvms_${node_jvms}
+	#
+	# Only set this once.  We want all the pcp files in one directory.
+	#
+	if [[ $pdir == "" ]]; then
+		pdir=/tmp/pcp_`date "+%Y.%m.%d-%H.%M.%S"`
+	fi
+	start_pcp ${pdir}/ $pcp_out $pcp_cfg
+fi
 
 for entry in $nodes; do
 	#
@@ -813,7 +809,6 @@ for entry in $nodes; do
 	if [[ $node_pinning == "y" ]]; then
 		obtain_nodes
 	fi
-
 
 	run_specjbb
 done
