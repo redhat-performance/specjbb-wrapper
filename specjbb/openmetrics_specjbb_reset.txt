@@ -4,5 +4,6 @@ numthreads 0
 runtime NaN
 throughput NaN
 latency NaN
+JVMs NaN
 Warehouse NaN
 BOPs NaN

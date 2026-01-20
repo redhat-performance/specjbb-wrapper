@@ -24,6 +24,7 @@
 #
 # Defined options
 #
+act_jvms=0
 java_version=21
 RESULTSDIR_TOP=""
 rtc=0
@@ -144,13 +145,14 @@ present_wh_results()
 		#
 		if [ $last_wh -ne $wh ]; then
 			if [[ $to_use_pcp -eq 1 ]]; then
-				result2pcp Warehouse ${total_wh}
-				result2pcp BOPs ${total_bops}
+				results2pcp_add_value "Warehouse:${total_wh}"
+				results2pcp_add_value "BOPs:${total_bops}"
+				results2pcp_add_value "JVMs:${act_jvms}"
+				results2pcp_add_value_commit
 				#
 				# To prevent WH confusion, reset. Do not reset iterations
 				#
-				result2pcp Warehouse 0
-				result2pcp BOPs 0
+				reset_pcp_om
 			fi
 			echo $total_wh:$total_bops >> $2
 			total_bops=$val
@@ -169,13 +171,14 @@ present_wh_results()
 	#
 	echo $total_wh:$total_bops >> $2
 	if [[ $to_use_pcp -eq 1 ]]; then
-		result2pcp Warehouse ${total_wh}
-		result2pcp BOPs ${total_bops}
+		results2pcp_add_value "Warehouse:${total_wh}"
+		results2pcp_add_value "BOPs:${total_bops}"
+		results2pcp_add_value "JVMs:${act_jvms}"
+		results2pcp_add_value_commit
 		#
 		# To prevent WH confusion, reset. Do not reset iterations
 		#
-		result2pcp Warehouse 0
-		result2pcp BOPs 0
+		reset_pcp_om
 	fi
 }
 
