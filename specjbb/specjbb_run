@@ -145,6 +145,11 @@ present_wh_results()
 				results2pcp_add_value "Warehouse:${total_wh}"
 				results2pcp_add_value "BOPs:${total_bops}"
 				results2pcp_add_value "JVMs:${jvms}"
+				if [[ $node_pinning == "y" ]]; then
+					results2pcp_add_value "Numa_bound:1"
+				else
+					results2pcp_add_value "Numa_bound:0"
+				fi
 				results2pcp_add_value_commit
 				#
 				# To prevent WH confusion, reset. Do not reset iterations
@@ -174,6 +179,11 @@ present_wh_results()
 		results2pcp_add_value "BOPs:${total_bops}"
 		results2pcp_add_value "JVMs:${act_jvms}"
 		results2pcp_add_value_commit
+		if [[ $node_pinning == "y" ]]; then
+			results2pcp_add_value "Numa_bound:1"
+		else
+			results2pcp_add_value "Numa_bound:0"
+		fi
 		#
 		# To prevent WH confusion, reset. Do not reset iterations
 		#

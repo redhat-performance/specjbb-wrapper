@@ -7,3 +7,4 @@ latency NaN
 JVMs NaN
 Warehouse NaN
 BOPs NaN
+Numa_bound NaN
