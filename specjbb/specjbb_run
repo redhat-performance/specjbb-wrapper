@@ -24,6 +24,7 @@
 #
 # Defined options
 #
+script_dir=$(realpath $(dirname $0))
 act_jvms=0
 java_version=21
 RESULTSDIR_TOP=""
@@ -49,6 +50,7 @@ test_status="Ran"
 start_warehouse=0
 increment_warehouse=0
 pdir=""
+save_csv_file=""
 
 tools_git=https://github.com/redhat-performance/test_tools-wrappers
 
@@ -212,6 +214,7 @@ process_specjbb_data()
 	for lvl2 in `ls -d $lvl1/results_specjbb*`; do
 		pushd $lvl2 > /tmp/null
 		csv_file=`pwd`/results_${test_name}.csv
+		save_csv_file=$csv_file
 		if [ ! -f $csv_file ]; then
 			$TOOLS_BIN/test_header_info --front_matter --results_file $csv_file --host $to_configuration --sys_type $to_sys_type --tuned $to_tuned_setting --results_version $version --test_name $test_name --field_header "Warehouses,Bops,Numb_JVMs"
 		fi
@@ -535,7 +538,7 @@ usage()
 	echo "  --start-warehouses: Number of warehouses to start at, default 2, if cpus < 16 else value is calculated."
 	echo "  --stop-warehouse: Warehouses top stop at.  Default is ncpus."
 	echo "  --usage: this is usage message."
-	source test_tools/general_setup --usage
+	source ${TOOLS_BIN}/general_setup --usage
 }
 
 
@@ -564,18 +567,19 @@ done
 # Check to see if the test tools directory exists.  If it does, we do not need to
 # clone the repo.
 #
-if [ ! -d "test_tools" ]; then
-	git clone $tools_git test_tools
+if [ ! -d "${HOME}/test_tools" ]; then
+	git clone $tools_git ${HOME}/test_tools
 	if [ $? -ne 0 ]; then
 		error_out "pulling git $tools_git failed." 1
 	fi
 fi
-
+TOOLS_BIN=${HOME}/test_tools
+export TOOLS_BIN
 if [ $show_usage -eq 1 ]; then
 	usage $0
 fi
 
-source test_tools/general_setup "$@"
+source ${TOOLS_BIN}/general_setup "$@"
 # Gather hardware information
 ${TOOLS_BIN}/gather_data ${curdir}
 
@@ -820,6 +824,8 @@ if [[ $to_use_pcp -eq 1 ]]; then
 	cp -R $pdir /tmp/${RESULTSDIR_TOP}
 fi
 if [[ $rtc -eq 0 ]]; then
+	${TOOLS_BIN}/csv_to_json $to_json_flags --csv_file $save_csv_file --output_file results_specjbb.json
+	$TOOLS_BIN/verify_results $to_verify_flags --schema_file $script_dir/results_schema.py --class_name Specjbb_Results --file results_specjbb.json
 	${TOOLS_BIN}/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR_TOP} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
 fi
 exit $rtc
