@@ -567,14 +567,15 @@ done
 # Check to see if the test tools directory exists.  If it does, we do not need to
 # clone the repo.
 #
-if [ ! -d "${HOME}/test_tools" ]; then
-	git clone $tools_git ${HOME}/test_tools
+TOOLS_BIN=${HOME}/test_tools
+export TOOLS_BIN
+if [ ! -d "${TOOLS_BIN}" ]; then
+	git clone $tools_git ${TOOLS_BIN}
 	if [ $? -ne 0 ]; then
 		error_out "pulling git $tools_git failed." 1
 	fi
 fi
-TOOLS_BIN=${HOME}/test_tools
-export TOOLS_BIN
+
 if [ $show_usage -eq 1 ]; then
 	usage $0
 fi
