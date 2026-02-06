@@ -79,7 +79,7 @@ if [ ! -f "/tmp/${test_name}.out" ]; then
 		cat /tmp/${test_name}.out
 		rm /tmp/${test_name}.out
 	fi
-	exit $?
+	exit $rtc
 fi
 
 #
@@ -827,6 +827,7 @@ fi
 if [[ $rtc -eq 0 ]]; then
 	${TOOLS_BIN}/csv_to_json $to_json_flags --csv_file $save_csv_file --output_file results_specjbb.json
 	$TOOLS_BIN/verify_results $to_verify_flags --schema_file $script_dir/results_schema.py --class_name Specjbb_Results --file results_specjbb.json
+	rtc=$?
 	${TOOLS_BIN}/save_results --curdir $curdir --home_root $to_home_root --copy_dir /tmp/${RESULTSDIR_TOP} --test_name $test_name --tuned_setting=$to_tuned_setting --version NONE --user $to_user
 fi
 exit $rtc
