@@ -400,7 +400,7 @@ execute_specjbb()
 		controller_pid=$!
 		if [ "x$controller_pid" = "x" ]; then
 			printf "\t${benchmark}: unable to start the java controller\n\n"
-			exit 1
+			exit $E_GENERAL
 		fi
 		#
 		# Give it a chance to come up.
@@ -663,7 +663,7 @@ opts=$(getopt \
 # Verify there were no errors
 #
 if [ $? -ne 0 ]; then
-	error_out "Failed: parsing arguments." 1
+	error_out "Failed: parsing arguments." $E_PARSE_ARGS
 fi
 
 eval set --$opts
@@ -734,18 +734,21 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ! -f ${run_dir}/specjbb.json ]]; then
-	error_out "Package definition file ${run_dir}/specjbb.json  is missing."
+	error_out "Package definition file ${run_dir}/specjbb.json is missing." $E_GENERAL
 fi
-${TOOLS_BIN}/package_tool --wrapper_config ${run_dir}/specjbb.json --no_packages $to_no_pkg_install
-if [[ $? -ne 0 ]]; then
-	error_out "Package installation of ${run_dir}/specjbb.json  using ${TOOLS_BIN}/package_tool was unsuccessful."
+package_tool --wrapper_config ${run_dir}/specjbb.json --no_packages $to_no_pkg_install
+prtc=$?
+if [[ $prtc -ne 0 ]]; then
+	error_out "Package installation of ${run_dir}/specjbb.json using ${TOOLS_BIN}/package_tool was unsuccessful." $prtc
 fi
 if [[ ! -f ${run_dir}/specjbb_${java_version}.json ]]; then
-	error_out "Package definition file ${run_dir}/specjbb_${java_version}.json  is missing.  Is the package file for $java_version defined?" 1
+	error_out "Package definition file ${run_dir}/specjbb_${java_version}.json is missing.  Is the package file for $java_version defined?" $E_GENERAL
 fi
-${TOOLS_BIN}/package_tool --wrapper_config ${run_dir}/specjbb_${java_version}.json --no_packages $to_no_pkg_install
-if [[ $? -ne 0 ]]; then
-	error_out "Package installation of ${run_dir}/specjbb_${java_version}.json  using ${TOOLS_BIN}/package_tool was unsuccessful."
+package_tool --wrapper_config ${run_dir}/specjbb_${java_version}.json --no_packages $to_no_pkg_install
+
+prtc=$?
+if [[ $prtc -ne 0 ]]; then
+	error_out "Package installation of ${run_dir}/specjbb_${java_version}.json using ${TOOLS_BIN}/package_tool was unsuccessful." $prtc
 fi
 
 #
