@@ -5,6 +5,7 @@ stack_size=""
 jvm_of=1
 total_jvms=1
 
+source ${TOOLS_BIN}/error_codes
 NOARG_OPTS=(
 )
 
@@ -25,7 +26,7 @@ opts=$(getopt \
 
 if [ $? -ne 0 ]; then
 	echo No arguments
-        exit 1
+        exit $E_NO_ARGS
 fi
 
 eval set --$opts
@@ -52,7 +53,7 @@ while [[ $# -gt 0 ]]; do
                 ;;
                 *)
 			echo Unknown option $1
-			exit 1
+			exit $E_USAGE
 		;;
 	esac
 done
@@ -109,6 +110,6 @@ else
 	 xss_value="-Xss330k"
 fi
 
-$java -Xms${stack_size}m -Xmx${stack_size}m spec.jbb.JBBmain -propfile $PROPS_FILE
 date
+$java -Xms${stack_size}m -Xmx${stack_size}m spec.jbb.JBBmain -propfile $PROPS_FILE
 exit $?
